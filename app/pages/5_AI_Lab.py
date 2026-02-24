@@ -3,7 +3,9 @@ View 5 — AI Lab
 Test AI transformations on media: caption generation + image enhancement.
 """
 import io
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 _root = str(Path(__file__).resolve().parent.parent.parent)
@@ -382,7 +384,16 @@ with tab_enhancement:
                         creativity=creativity,
                     )
 
-                st.session_state["enh_result"] = enh_result
+                # Save enhanced image to temp file (too large for session state)
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                tmp.write(enh_result["image_bytes"])
+                tmp.close()
+                st.session_state["enh_result"] = {
+                    "tmp_path": tmp.name,
+                    "width": enh_result["width"],
+                    "height": enh_result["height"],
+                    "_cost": enh_result["_cost"],
+                }
 
                 # Track session cost
                 if "enh_session_costs" not in st.session_state:
@@ -390,19 +401,23 @@ with tab_enhancement:
                 st.session_state["enh_session_costs"].append(enh_result["_cost"])
 
             except Exception as e:
+                import traceback
                 st.error(f"Enhancement failed: {e}")
+                st.code(traceback.format_exc())
 
     # --- Display results ---
-    enh_result = st.session_state.get("enh_result")
-    if enh_result:
+    enh_meta = st.session_state.get("enh_result")
+    if enh_meta and os.path.exists(enh_meta.get("tmp_path", "")):
+        enhanced_bytes = Path(enh_meta["tmp_path"]).read_bytes()
+
         st.subheader("Before / After")
         col_before, col_after = st.columns(2)
         with col_before:
             st.image(raw_bytes, caption=f"Original ({orig_w}x{orig_h})", use_container_width=True)
         with col_after:
             st.image(
-                enh_result["image_bytes"],
-                caption=f"Enhanced ({enh_result['width']}x{enh_result['height']})",
+                enhanced_bytes,
+                caption=f"Enhanced ({enh_meta['width']}x{enh_meta['height']})",
                 use_container_width=True,
             )
 
@@ -414,7 +429,7 @@ with tab_enhancement:
         with col_download:
             st.download_button(
                 "Download Enhanced Image",
-                data=enh_result["image_bytes"],
+                data=enhanced_bytes,
                 file_name=f"enhanced_{media.get('file_name', 'image')}.png",
                 mime="image/png",
                 use_container_width=True,
@@ -424,9 +439,8 @@ with tab_enhancement:
             if st.button("Re-analyze with Claude Vision", use_container_width=True, key="enh_reanalyze"):
                 with st.spinner("Re-analyzing enhanced image..."):
                     try:
-                        import base64
-                        enhanced_b64 = base64.standard_b64encode(enh_result["image_bytes"]).decode()
-                        vision_result = vision_reanalyze(enhanced_b64, media_type="image/png")
+                        enhanced_b64 = encode_image_bytes(enhanced_bytes)
+                        vision_result = vision_reanalyze(enhanced_b64, media_type="image/jpeg")
                         st.session_state["enh_vision_result"] = vision_result
                     except Exception as e:
                         st.error(f"Re-analysis failed: {e}")

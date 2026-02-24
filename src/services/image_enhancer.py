@@ -64,6 +64,23 @@ def _image_dimensions(image_bytes: bytes) -> tuple[int, int]:
     return img.size
 
 
+def _downscale_for_api(image_bytes: bytes, max_pixels: int = 1_048_576) -> bytes:
+    """Downscale image if it exceeds max pixel count (preserving aspect ratio).
+    Stability AI fast upscale limit = 1,048,576 pixels (1 MP).
+    """
+    img = Image.open(io.BytesIO(image_bytes))
+    w, h = img.size
+    pixels = w * h
+    if pixels <= max_pixels:
+        return image_bytes
+    scale = (max_pixels / pixels) ** 0.5
+    new_w, new_h = int(w * scale), int(h * scale)
+    img = img.resize((new_w, new_h), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Outpaint padding computation
 # ---------------------------------------------------------------------------
@@ -134,6 +151,7 @@ def stability_upscale(
     """
     api_key = _get_stability_key()
     png = _ensure_png(image_bytes)
+    png = _downscale_for_api(png)  # Stability AI limit: 1 MP
     info = STABILITY_METHODS[method]
 
     if method == "fast":
@@ -209,6 +227,7 @@ def stability_outpaint(
     """
     api_key = _get_stability_key()
     png = _ensure_png(image_bytes)
+    png = _downscale_for_api(png)  # Stability AI limit: 1 MP
     w, h = _image_dimensions(png)
     padding = compute_outpaint_padding(w, h, target_ratio)
 
