@@ -35,7 +35,7 @@ def _download_raw(drive_file_id: str) -> bytes:
 
 
 sidebar_css()
-page_title("Test Lab", "Generate Instagram captions")
+page_title("AI Lab", "Test AI transformations on your media")
 
 with st.expander("How does this work?", expanded=False):
     st.markdown("""
@@ -91,11 +91,26 @@ with st.sidebar:
         ["printemps", "ete", "automne", "hiver", "toute_saison"],
         key="lab_season",
     )
-    cta_type = st.selectbox(
-        "CTA Type",
-        ["link_bio", "dm", "book_now"],
+    CTA_OPTIONS = {
+        "Link in bio — Drive to profile link": "link_bio",
+        "Send a DM — Encourage direct messages": "dm",
+        "Book now — Direct booking push": "book_now",
+        "Comment — Ask a question to drive engagement": "comment",
+        "Tag a friend — Organic reach boost": "tag_friend",
+        "Save this post — Signal quality to algorithm": "save_post",
+        "Share — Encourage sharing for virality": "share",
+        "Visit website — Drive to hotel website": "visit_website",
+        "Call us — Direct phone conversion": "call_us",
+        "Special offer — Promo code or discount": "offer",
+        "Poll — A or B question for interaction": "poll",
+        "Discover Sitges — Destination-driven soft sell": "location",
+    }
+    cta_label = st.selectbox(
+        "Call to Action",
+        list(CTA_OPTIONS.keys()),
         key="lab_cta",
     )
+    cta_type = CTA_OPTIONS[cta_label]
 
     include_image = st.checkbox(
         "Include image in prompt",

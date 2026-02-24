@@ -23,7 +23,7 @@ from src.services.media_queries import (
 from src.services.google_drive import download_file_bytes
 
 sidebar_css()
-page_title("Videos", "Browse videos, view scenes, and correct tags")
+page_title("Video Details", "Browse videos, view scenes, and correct tags")
 
 ITEMS_PER_PAGE = 12
 

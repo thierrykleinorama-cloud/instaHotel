@@ -53,8 +53,8 @@ st.markdown("""
 Use the sidebar to navigate between views:
 
 - **Stats** — Overview, distribution charts, gap alerts
-- **Gallery** — Browse and filter all images
-- **Detail** — View full-size image and correct AI tags
-- **Lab** — Generate Instagram captions
-- **Videos** — Browse and filter videos
+- **Gallery** — Browse and filter all media
+- **Image Details** — View full-size image and correct AI tags
+- **Video Details** — Browse videos, view scenes, and correct tags
+- **AI Lab** — Test AI transformations on your media
 """)

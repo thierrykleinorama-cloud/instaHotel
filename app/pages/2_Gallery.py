@@ -101,6 +101,6 @@ if grid_result["deleted"]:
 
 if grid_result["view"]:
     st.session_state["selected_media_id"] = grid_result["view"]
-    st.switch_page("pages/3_Detail.py")
+    st.switch_page("pages/3_Image_Details.py")
 
 st.caption(f"Page {page} of {total_pages}")

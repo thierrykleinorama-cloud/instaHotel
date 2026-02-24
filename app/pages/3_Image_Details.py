@@ -45,7 +45,7 @@ def _to_base64_jpeg(raw_bytes: bytes) -> str:
 
 
 sidebar_css()
-page_title("Detail", "View full-size image and correct AI tags")
+page_title("Image Details", "View full-size image and correct AI tags")
 
 # --- Sidebar: filters + media selector ---
 media_id = st.session_state.get("selected_media_id")
@@ -153,7 +153,7 @@ if not media:
 if media.get("media_type") == "video":
     st.info("This is a video. Redirecting to Videos page.")
     st.session_state["selected_video_id"] = media_id
-    st.switch_page("pages/5_Videos.py")
+    st.switch_page("pages/4_Video_Details.py")
 
 # --- Layout ---
 left_col, right_col = st.columns([3, 2])
