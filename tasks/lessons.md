@@ -63,6 +63,26 @@
 **Erreur** : Completed all Phase 1 steps but forgot to mark them done in `tasks/todo.md` along the way.
 **Regle** : Update `tasks/todo.md` after completing each step, not just at the end. The user expects real-time progress tracking.
 
+## Lesson 2026-02-24 — Stability AI async vs sync upscale
+**Observation** : Stability AI `fast` upscale returns the image directly (sync, Accept: image/*). `conservative` and `creative` return a JSON `{id: "..."}` and require polling at `/result/{id}` with 5s intervals.
+**Regle** : Always check the method type before calling Stability — sync returns image bytes, async returns JSON. Two different code paths needed.
+
+## Lesson 2026-02-24 — Replicate input format
+**Observation** : Replicate SDK expects a data URI (`data:image/png;base64,...`) for image input, not raw bytes or a file path.
+**Regle** : Convert to base64 data URI when calling Replicate models. The output is a URL string that must be downloaded separately.
+
+## Lesson 2026-02-24 — Streamlit tabs + sidebar interaction
+**Observation** : Sidebar widgets can be placed inside a tab's `with` block to associate them contextually, but they still render in the sidebar globally. This works for editorial context widgets that only matter for captions.
+**Regle** : For tab-specific sidebar sections, nest the sidebar `with` block inside the tab `with` block.
+
+## Lesson 2026-02-24 — Always convert to PNG for enhancement APIs
+**Observation** : Both Stability AI and Replicate expect PNG input. HEIC, JPEG, and other formats may fail or produce unexpected results.
+**Regle** : Use `_ensure_png()` to convert any image format to PNG before sending to enhancement APIs. This also handles HEIC via pillow-heif.
+
+## Lesson 2026-02-24 — Test before batch: AI Lab approach
+**Observation** : Instead of building a batch enhancement script immediately, adding a testing tab to AI Lab lets the user evaluate API quality and cost manually first.
+**Regle** : For new AI integrations, always build a single-image testing UI first. Batch processing comes after the user validates the approach.
+
 ---
 
 ## Regles du projet
