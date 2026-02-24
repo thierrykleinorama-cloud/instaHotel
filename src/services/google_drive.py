@@ -1,8 +1,10 @@
 """
 Google Drive service — OAuth, list media files, download bytes.
-Uses a project-local token file (.google_token_drive.json).
+Local dev: uses project-local token file (.google_token_drive.json).
+Streamlit Cloud: reads token JSON from st.secrets["GOOGLE_DRIVE_TOKEN"].
 """
 import io
+import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -10,7 +12,6 @@ from typing import Optional
 from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
@@ -37,17 +38,40 @@ _drive_service = None
 
 
 def _authenticate() -> Credentials:
-    """Return credentials, creating/refreshing token as needed."""
+    """Return credentials, creating/refreshing token as needed.
+
+    On Streamlit Cloud: reads token JSON from st.secrets["GOOGLE_DRIVE_TOKEN"].
+    Locally: uses the project-local token file.
+    """
     creds = None
-    if TOKEN_FILE.exists():
+
+    # Try Streamlit Cloud secrets first
+    try:
+        import streamlit as st
+        token_json = st.secrets.get("GOOGLE_DRIVE_TOKEN")
+        if token_json:
+            info = json.loads(token_json) if isinstance(token_json, str) else dict(token_json)
+            creds = Credentials.from_authorized_user_info(info, SCOPES)
+    except Exception:
+        pass
+
+    # Fall back to local token file
+    if creds is None and TOKEN_FILE.exists():
         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
+
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
+            # Persist refreshed token locally if possible
+            try:
+                TOKEN_FILE.write_text(creds.to_json())
+            except Exception:
+                pass
         else:
+            from google_auth_oauthlib.flow import InstalledAppFlow
             flow = InstalledAppFlow.from_client_secrets_file(str(CREDS_FILE), SCOPES)
             creds = flow.run_local_server(port=8099, open_browser=True)
-        TOKEN_FILE.write_text(creds.to_json())
+            TOKEN_FILE.write_text(creds.to_json())
     return creds
 
 

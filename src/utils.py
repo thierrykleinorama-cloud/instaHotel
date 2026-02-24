@@ -6,9 +6,17 @@ import io
 from typing import Optional
 
 from PIL import Image
-from pillow_heif import register_heif_opener
 
-register_heif_opener()
+# Register HEIF opener lazily to avoid breaking PIL's JPEG handler
+_heif_registered = False
+
+
+def _ensure_heif():
+    global _heif_registered
+    if not _heif_registered:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+        _heif_registered = True
 
 
 # Maximum dimension for images sent to Claude (saves tokens)
@@ -17,6 +25,7 @@ MAX_IMAGE_DIMENSION = 2048
 
 def encode_image_bytes(image_bytes: bytes, mime_type: str = "image/jpeg") -> str:
     """Resize if needed and return base64-encoded string."""
+    _ensure_heif()
     img = Image.open(io.BytesIO(image_bytes))
 
     # Convert HEIC/HEIF to JPEG (Pillow may not support HEIC natively)

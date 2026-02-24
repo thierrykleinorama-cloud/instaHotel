@@ -48,3 +48,9 @@ tmp_videos/
 
 # Database backups
 backups/
+
+# Claude Code
+.claude/
+
+# Screenshots (Playwright testing)
+screenshots/

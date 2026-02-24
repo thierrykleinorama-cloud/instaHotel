@@ -1,7 +1,19 @@
 # INSTA HOTEL - Task Tracking
-# Version: 1.1 - 24 fevrier 2026
+# Version: 1.2 - 24 fevrier 2026
 
 ---
+
+## Phase 1b : Media Library Explorer — COMPLETE
+- [x] Schema: manual_notes column + tag_corrections table
+- [x] Service layer: media_queries.py (cached Supabase helpers)
+- [x] Service layer: caption_generator.py (Claude caption generation ES/EN/FR)
+- [x] App skeleton: main.py entry point + components (ui, media_grid, tag_editor)
+- [x] View 1 — Stats & Gaps: metrics, distribution charts, gap alerts
+- [x] View 2 — Gallery: filterable photo grid with Drive thumbnails, pagination
+- [x] View 3 — Detail: full-size image, tag correction with audit log
+- [x] View 4 — Test Lab: caption generation with/without image, 2 variants x 3 languages
+- [x] View 5 — Videos: video player, per-scene detail, tag correction
+- [x] Run: `streamlit run app/main.py`
 
 ## Phase 1 : Mediatheque Intelligente (Sem. 1-2) — COMPLETE
 - [x] Setup projet (repo GitHub, venv, Supabase, .env, .gitignore)
@@ -25,6 +37,12 @@
 
 ## Phase 2.5 : AI Media Enhancement & Generation (Sem. 3)
 ### Direction A: Enhance/Modify existing photos
+- [ ] **AI quality uplift for ~94 low-quality media (ig_quality < 5)**:
+  - Use AI upscaling/enhancement (Real-ESRGAN, Topaz Photo AI API, or Stability AI)
+  - Auto-enhance lighting, sharpness, contrast
+  - Before/after comparison: re-run Claude Vision on enhanced version to verify ig_quality improved
+  - Only keep enhanced version if quality score increases by 2+ points
+  - Script: `scripts/enhance_low_quality.py` — batch process, compare, archive originals
 - [ ] Auto-retarget: outpaint photos to 4:5 and 9:16 for IG (Stability AI / DALL-E)
 - [ ] Quality enhancement: uplift ig_quality 5-6 photos (lighting, sharpness, upscale)
 - [ ] Seasonal variants: generate autumn/winter versions of summer shots
