@@ -20,6 +20,9 @@ _supabase_client: Optional[Client] = None
 # Table name constants
 TABLE_MEDIA_LIBRARY = "media_library"
 TABLE_TAG_CORRECTIONS = "tag_corrections"
+TABLE_EDITORIAL_RULES = "editorial_rules"
+TABLE_SEASONAL_THEMES = "seasonal_themes"
+TABLE_EDITORIAL_CALENDAR = "editorial_calendar"
 
 
 def _get_secret(key: str) -> Optional[str]:

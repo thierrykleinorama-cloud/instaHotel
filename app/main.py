@@ -57,4 +57,6 @@ Use the sidebar to navigate between views:
 - **Image Details** — View full-size image and correct AI tags
 - **Video Details** — Browse videos, view scenes, and correct tags
 - **AI Lab** — Test AI transformations on your media
+- **Calendar** — Editorial posting calendar with scored media assignments
+- **Rules** — Configure weekly posting rules and seasonal themes
 """)
