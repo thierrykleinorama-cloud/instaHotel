@@ -1,6 +1,6 @@
 """
-View 4 — Test Lab
-Generate Instagram captions from media metadata (and optionally the image).
+View 5 — AI Lab
+Test AI transformations on media. Currently: Instagram caption generation.
 """
 import sys
 from pathlib import Path
@@ -9,14 +9,17 @@ _root = str(Path(__file__).resolve().parent.parent.parent)
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-import io
-
 import streamlit as st
 
 from app.components.ui import sidebar_css, page_title
-from app.components.media_grid import render_media_grid
 from src.services.media_queries import fetch_all_media, fetch_media_by_id, fetch_distinct_values
-from src.services.caption_generator import generate_captions
+from src.services.caption_generator import (
+    generate_captions,
+    build_prompt,
+    AVAILABLE_MODELS,
+    DEFAULT_MODEL,
+)
+from src.prompts.caption_generation import SYSTEM_PROMPT
 from src.services.google_drive import download_file_bytes
 from src.utils import encode_image_bytes
 
@@ -39,23 +42,17 @@ page_title("AI Lab", "Test AI transformations on your media")
 
 with st.expander("How does this work?", expanded=False):
     st.markdown("""
-**Test Lab** lets you generate Instagram captions for any photo in your library using Claude AI.
+**AI Lab** lets you test AI transformations on your media library.
 
-**How to use:**
-1. **Select a photo** from the sidebar (search by filename or browse the list)
-2. **Set editorial context** — choose a theme, season, and call-to-action type
-3. **Click "Generate Captions"** — Claude generates 2 caption variants in 3 languages:
-   - **Short**: 2-3 punchy lines, great for quick posts
-   - **Storytelling**: 5-6 emotional lines, great for engagement
-   - Each variant in **Spanish, English, and French**
-   - Plus **20 optimized hashtags**
-4. **"Regenerate"** creates fresh new captions (never cached)
+**Caption Generation** (current method):
+1. **Select a photo** using the sidebar filters
+2. **Set editorial context** — theme, season, call-to-action
+3. **Review the prompt** — see exactly what will be sent to the AI
+4. **Choose the model** — trade off quality vs. cost
+5. **Generate** — get 2 caption variants x 3 languages + hashtags
+6. **Check cost** — see token usage and cost after generation
 
-**Include image toggle:**
-- **OFF** (default): sends only metadata (description, tags, ambiance) — fast, ~$0.003/call
-- **ON**: also sends the actual photo to Claude — richer results, ~$0.01/call
-
-Use `st.code()` blocks to easily copy captions for manual posting.
+More AI methods will be added here (quality enhancement, photo-to-video, etc.)
 """)
 
 
@@ -163,7 +160,7 @@ with st.sidebar:
     include_image = st.checkbox(
         "Include image in prompt",
         value=False,
-        help="OFF: metadata only (~$0.003). ON: sends image for richer captions (~$0.01).",
+        help="OFF: metadata only. ON: sends image for richer captions.",
         key="lab_include_img",
     )
 
@@ -189,6 +186,36 @@ with col_info:
 
 st.divider()
 
+# --- Model selection ---
+model_labels = {v["label"]: k for k, v in AVAILABLE_MODELS.items()}
+model_details = {
+    v["label"]: f"Input: ${v['input_per_mtok']}/Mtok | Output: ${v['output_per_mtok']}/Mtok"
+    for v in AVAILABLE_MODELS.values()
+}
+default_label = AVAILABLE_MODELS[DEFAULT_MODEL]["label"]
+selected_model_label = st.selectbox(
+    "Model",
+    list(model_labels.keys()),
+    index=list(model_labels.keys()).index(default_label),
+    key="lab_model",
+    help="Choose AI model: better models = higher quality but more expensive",
+)
+st.caption(model_details[selected_model_label])
+selected_model = model_labels[selected_model_label]
+
+# --- Show prompt ---
+filled_prompt = build_prompt(media, theme, season, cta_type)
+
+with st.expander("View prompt", expanded=False):
+    st.markdown("**System prompt:**")
+    st.code(SYSTEM_PROMPT, language=None)
+    st.markdown("**User prompt:**")
+    st.code(filled_prompt, language=None)
+    if include_image:
+        st.caption("+ image will be attached to the request")
+
+st.divider()
+
 # --- Generate captions ---
 col_gen, col_regen = st.columns([1, 1])
 generate_clicked = col_gen.button("Generate Captions", type="primary", use_container_width=True)
@@ -209,6 +236,7 @@ if generate_clicked or regenerate_clicked:
                 cta_type=cta_type,
                 include_image=include_image,
                 image_base64=image_b64,
+                model=selected_model,
             )
             st.session_state["lab_result"] = result
         except Exception as e:
@@ -217,31 +245,40 @@ if generate_clicked or regenerate_clicked:
 # --- Display results ---
 result = st.session_state.get("lab_result")
 if result:
+    # Cost & usage info
+    usage = result.get("_usage", {})
+    if usage:
+        st.caption(
+            f"Model: {usage.get('model_label', '?')} | "
+            f"Tokens: {usage.get('input_tokens', 0):,} in / {usage.get('output_tokens', 0):,} out | "
+            f"Cost: ${usage.get('cost_usd', 0):.4f}"
+        )
+
     st.subheader("Generated Captions")
 
     # Short variant
     short_tab_es, short_tab_en, short_tab_fr = st.tabs(["Short ES", "Short EN", "Short FR"])
     short = result.get("short", {})
     with short_tab_es:
-        st.code(short.get("es", ""), language=None)
+        st.text_area("short_es", short.get("es", ""), height=100, label_visibility="collapsed", key="lab_short_es")
     with short_tab_en:
-        st.code(short.get("en", ""), language=None)
+        st.text_area("short_en", short.get("en", ""), height=100, label_visibility="collapsed", key="lab_short_en")
     with short_tab_fr:
-        st.code(short.get("fr", ""), language=None)
+        st.text_area("short_fr", short.get("fr", ""), height=100, label_visibility="collapsed", key="lab_short_fr")
 
     # Storytelling variant
     story_tab_es, story_tab_en, story_tab_fr = st.tabs(["Story ES", "Story EN", "Story FR"])
     story = result.get("storytelling", {})
     with story_tab_es:
-        st.code(story.get("es", ""), language=None)
+        st.text_area("story_es", story.get("es", ""), height=220, label_visibility="collapsed", key="lab_story_es")
     with story_tab_en:
-        st.code(story.get("en", ""), language=None)
+        st.text_area("story_en", story.get("en", ""), height=220, label_visibility="collapsed", key="lab_story_en")
     with story_tab_fr:
-        st.code(story.get("fr", ""), language=None)
+        st.text_area("story_fr", story.get("fr", ""), height=220, label_visibility="collapsed", key="lab_story_fr")
 
     # Hashtags
     hashtags = result.get("hashtags", [])
     if hashtags:
         st.subheader("Hashtags")
         hashtag_str = " ".join(f"#{h}" for h in hashtags)
-        st.code(hashtag_str, language=None)
+        st.text_area("hashtags", hashtag_str, height=80, label_visibility="collapsed", key="lab_hashtags")

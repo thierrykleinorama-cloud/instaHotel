@@ -8,47 +8,27 @@ from typing import Optional
 
 import anthropic
 
-MODEL = "claude-sonnet-4-20250514"
+from src.prompts.caption_generation import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 
-SYSTEM_PROMPT = """Tu es le community manager de l'Hôtel Noucentista, un hôtel boutique Art Nouveau à Sitges (Barcelone).
-Tu écris des légendes Instagram authentiques, chaleureuses, jamais corporate.
-Tu maîtrises parfaitement l'espagnol, l'anglais et le français.
+# Available models for AI Lab
+AVAILABLE_MODELS = {
+    "claude-sonnet-4-6": {"label": "Sonnet 4.6", "input_per_mtok": 3.0, "output_per_mtok": 15.0},
+    "claude-opus-4-6": {"label": "Opus 4.6", "input_per_mtok": 15.0, "output_per_mtok": 75.0},
+    "claude-haiku-4-5-20251001": {"label": "Haiku 4.5", "input_per_mtok": 0.80, "output_per_mtok": 4.0},
+}
 
-Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans commentaires)."""
+DEFAULT_MODEL = "claude-sonnet-4-6"
 
-USER_PROMPT_TEMPLATE = """Génère des légendes Instagram pour ce média hôtelier.
 
-Contexte du média :
-- Catégorie : {category}
-- Sous-catégorie : {subcategory}
-- Ambiance : {ambiance}
-- Éléments visibles : {elements}
-- Description FR : {description_fr}
-- Description EN : {description_en}
-- Notes manuelles : {manual_notes}
-
-Contexte éditorial :
-- Thème : {theme}
-- Saison : {season}
-- Type de CTA : {cta_type}
-
-Génère un JSON avec cette structure exacte :
-{{
-  "short": {{
-    "es": "Légende courte en espagnol (2-3 lignes, percutante)",
-    "en": "Short English caption (2-3 lines, punchy)",
-    "fr": "Légende courte en français (2-3 lignes, percutante)"
-  }},
-  "storytelling": {{
-    "es": "Légende storytelling en espagnol (5-6 lignes, émotionnelle)",
-    "en": "Storytelling English caption (5-6 lines, emotional)",
-    "fr": "Légende storytelling en français (5-6 lignes, émotionnelle)"
-  }},
-  "hashtags": ["20 hashtags pertinents, mix popularité, sans le #"]
-}}
-
-Inclus un CTA naturel ({cta_type}) dans chaque légende.
-Ton : chaleureux, authentique, jamais corporate."""
+def _get_client() -> anthropic.Anthropic:
+    """Get Anthropic client, supporting st.secrets or env var."""
+    api_key = None
+    try:
+        import streamlit as st
+        api_key = st.secrets.get("ANTHROPIC_API_KEY")
+    except Exception:
+        pass
+    return anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
 
 
 def _parse_json_response(text: str) -> dict:
@@ -60,38 +40,15 @@ def _parse_json_response(text: str) -> dict:
     return json.loads(text)
 
 
-def generate_captions(
-    media: dict,
-    theme: str,
-    season: str,
-    cta_type: str,
-    include_image: bool = False,
-    image_base64: Optional[str] = None,
-) -> dict:
-    """
-    Generate Instagram captions via Claude API.
+def compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Compute cost in USD for a given model and token counts."""
+    info = AVAILABLE_MODELS.get(model, AVAILABLE_MODELS[DEFAULT_MODEL])
+    return (input_tokens * info["input_per_mtok"] + output_tokens * info["output_per_mtok"]) / 1_000_000
 
-    Args:
-        media: dict with category, subcategory, ambiance, elements, descriptions, manual_notes
-        theme: editorial theme
-        season: target season
-        cta_type: CTA type (link_bio, dm, book_now)
-        include_image: if True, sends image_base64 for richer output
-        image_base64: base64-encoded JPEG (required if include_image=True)
 
-    Returns:
-        dict with keys: short, storytelling, hashtags
-    """
-    # Support st.secrets (Streamlit Cloud) or ANTHROPIC_API_KEY env var
-    api_key = None
-    try:
-        import streamlit as st
-        api_key = st.secrets.get("ANTHROPIC_API_KEY")
-    except Exception:
-        pass
-    client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
-
-    prompt_text = USER_PROMPT_TEMPLATE.format(
+def build_prompt(media: dict, theme: str, season: str, cta_type: str) -> str:
+    """Build the filled user prompt for display purposes."""
+    return USER_PROMPT_TEMPLATE.format(
         category=media.get("category", ""),
         subcategory=media.get("subcategory", ""),
         ambiance=", ".join(media.get("ambiance", [])) if isinstance(media.get("ambiance"), list) else media.get("ambiance", ""),
@@ -103,6 +60,26 @@ def generate_captions(
         season=season,
         cta_type=cta_type,
     )
+
+
+def generate_captions(
+    media: dict,
+    theme: str,
+    season: str,
+    cta_type: str,
+    include_image: bool = False,
+    image_base64: Optional[str] = None,
+    model: str = DEFAULT_MODEL,
+) -> dict:
+    """
+    Generate Instagram captions via Claude API.
+
+    Returns dict with keys: short, storytelling, hashtags, _usage
+    (_usage contains model, input_tokens, output_tokens, cost_usd)
+    """
+    client = _get_client()
+
+    prompt_text = build_prompt(media, theme, season, cta_type)
 
     content = []
     if include_image and image_base64:
@@ -119,11 +96,24 @@ def generate_captions(
     content.append({"type": "text", "text": prompt_text})
 
     response = client.messages.create(
-        model=MODEL,
+        model=model,
         max_tokens=2000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": content}],
     )
 
     raw_text = response.content[0].text
-    return _parse_json_response(raw_text)
+    result = _parse_json_response(raw_text)
+
+    # Attach usage metadata
+    input_tokens = response.usage.input_tokens
+    output_tokens = response.usage.output_tokens
+    result["_usage"] = {
+        "model": model,
+        "model_label": AVAILABLE_MODELS.get(model, {}).get("label", model),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": compute_cost(model, input_tokens, output_tokens),
+    }
+
+    return result

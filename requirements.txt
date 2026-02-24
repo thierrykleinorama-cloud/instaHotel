@@ -1,7 +1,7 @@
 # InstaHotel - Dependencies
 
 # AI
-anthropic>=0.40
+anthropic>=0.80
 
 # Database
 supabase>=2.3.0
