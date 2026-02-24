@@ -325,3 +325,65 @@ def replicate_upscale(
         "height": rh,
         "_cost": {"operation": "replicate_upscale", "cost_usd": 0.003 * scale},
     }
+
+
+RETOUCH_RESOLUTIONS = ["1K", "2K", "4K"]
+RETOUCH_COSTS = {"1K": 0.15, "2K": 0.15, "4K": 0.30}
+
+DEFAULT_RETOUCH_PROMPT = (
+    "Enhance this hotel photograph for a luxury hospitality marketing portfolio. "
+    "Improve natural lighting, boost color vibrancy, increase sharpness and clarity, "
+    "fix white balance, and make it look professionally shot. "
+    "Keep the exact same scene, composition, and all objects — only improve the visual quality."
+)
+
+
+def replicate_retouch(
+    image_bytes: bytes,
+    prompt: str = DEFAULT_RETOUCH_PROMPT,
+    resolution: str = "2K",
+) -> dict:
+    """
+    AI retouch via Nano Banana Pro (Gemini 3 Pro Image) on Replicate.
+    Sends the image + a text prompt for holistic enhancement.
+    Returns: {image_bytes, width, height, _cost}
+    """
+    import replicate as replicate_sdk
+    import base64
+
+    api_key = _get_replicate_key()
+    os.environ["REPLICATE_API_TOKEN"] = api_key
+
+    png = _ensure_png(image_bytes)
+    b64 = base64.b64encode(png).decode()
+    data_uri = f"data:image/png;base64,{b64}"
+
+    output = replicate_sdk.run(
+        "google/nano-banana-pro",
+        input={
+            "prompt": prompt,
+            "image_input": [data_uri],
+            "resolution": resolution,
+            "aspect_ratio": "match_input_image",
+            "output_format": "png",
+        },
+    )
+
+    # output is a FileOutput or list — get the first image URL
+    if isinstance(output, list):
+        result_url = str(output[0])
+    else:
+        result_url = str(output)
+
+    resp = httpx.get(result_url, timeout=120, follow_redirects=True)
+    resp.raise_for_status()
+    result_bytes = resp.content
+
+    rw, rh = _image_dimensions(result_bytes)
+    cost = RETOUCH_COSTS.get(resolution, 0.15)
+    return {
+        "image_bytes": result_bytes,
+        "width": rw,
+        "height": rh,
+        "_cost": {"operation": "retouch_nano_banana", "cost_usd": cost},
+    }

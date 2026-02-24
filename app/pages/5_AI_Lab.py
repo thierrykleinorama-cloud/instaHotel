@@ -30,9 +30,13 @@ from src.services.image_enhancer import (
     stability_upscale,
     stability_outpaint,
     replicate_upscale,
+    replicate_retouch,
     compute_outpaint_padding,
     STABILITY_METHODS,
     TARGET_RATIOS,
+    RETOUCH_RESOLUTIONS,
+    RETOUCH_COSTS,
+    DEFAULT_RETOUCH_PROMPT,
 )
 from src.services.vision_analyzer import get_raw_response as vision_reanalyze
 
@@ -330,7 +334,9 @@ with tab_enhancement:
     st.divider()
 
     # --- Operation selector ---
-    operation = st.radio("Operation", ["Upscale", "Outpaint"], horizontal=True, key="enh_op")
+    operation = st.radio(
+        "Operation", ["Upscale", "AI Retouch", "Outpaint"], horizontal=True, key="enh_op"
+    )
 
     if operation == "Upscale":
         backend = st.selectbox("Backend", ["Stability AI", "Replicate"], key="enh_backend")
@@ -342,6 +348,23 @@ with tab_enhancement:
         else:
             st.caption("Model: Real-ESRGAN 4x (~$0.01)")
             scale = st.selectbox("Scale", [2, 4], index=1, key="enh_rep_scale")
+
+    elif operation == "AI Retouch":
+        st.caption("Nano Banana Pro (Gemini 3 Pro Image) via Replicate")
+        retouch_resolution = st.selectbox(
+            "Resolution",
+            RETOUCH_RESOLUTIONS,
+            index=1,
+            key="enh_retouch_res",
+            help="1K/2K = $0.15, 4K = $0.30",
+        )
+        retouch_prompt = st.text_area(
+            "Retouch prompt",
+            value=DEFAULT_RETOUCH_PROMPT,
+            height=120,
+            key="enh_retouch_prompt",
+            help="Describe what to improve. Keep 'same scene/composition' instructions to avoid hallucinations.",
+        )
 
     elif operation == "Outpaint":
         target_ratio = st.selectbox("Target ratio", list(TARGET_RATIOS.keys()), key="enh_ratio")
@@ -377,6 +400,12 @@ with tab_enhancement:
                         enh_result = stability_upscale(raw_bytes, method=method)
                     else:
                         enh_result = replicate_upscale(raw_bytes, scale=scale)
+                elif operation == "AI Retouch":
+                    enh_result = replicate_retouch(
+                        raw_bytes,
+                        prompt=retouch_prompt,
+                        resolution=retouch_resolution,
+                    )
                 else:
                     enh_result = stability_outpaint(
                         raw_bytes,
