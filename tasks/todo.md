@@ -47,6 +47,7 @@
 - [x] Download enhanced image as PNG
 - [x] Session cost tracker
 - [x] Outpaint padding preview (computed symmetric padding)
+- [x] **Fix max_quality slider**: wired into filter logic in media_selector.py
 - [ ] **User testing**: test with real STABILITY_API_KEY + REPLICATE_API_TOKEN
 
 ## Phase 2.5B : Batch Enhancement (Sem. 3) — PLANNED

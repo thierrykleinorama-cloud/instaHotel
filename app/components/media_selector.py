@@ -35,6 +35,7 @@ def render_media_selector(key_prefix: str) -> tuple[dict, bytes]:
         selected_seasons = st.multiselect("Season filter", seasons_filter, key=f"{key_prefix}_season_filter")
 
         min_quality = st.slider("Min quality", 1, 10, 1, key=f"{key_prefix}_qual")
+        max_quality = st.slider("Max quality", 1, 10, 10, key=f"{key_prefix}_qual_max")
 
         search = st.text_input("Search filename", key=f"{key_prefix}_search")
         elements_search = st.text_input(
@@ -63,7 +64,7 @@ def render_media_selector(key_prefix: str) -> tuple[dict, bytes]:
                 if isinstance(m.get("season"), list)
                 and any(s in selected_seasons for s in m["season"])
             ]
-        all_media = [m for m in all_media if (m.get("ig_quality") or 0) >= min_quality]
+        all_media = [m for m in all_media if min_quality <= (m.get("ig_quality") or 0) <= max_quality]
         if search:
             all_media = [
                 m for m in all_media
