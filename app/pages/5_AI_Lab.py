@@ -15,7 +15,7 @@ import streamlit as st
 
 from app.components.ui import sidebar_css, page_title
 from app.components.media_grid import render_media_grid
-from src.services.media_queries import fetch_all_media, fetch_media_by_id
+from src.services.media_queries import fetch_all_media, fetch_media_by_id, fetch_distinct_values
 from src.services.caption_generator import generate_captions
 from src.services.google_drive import download_file_bytes
 from src.utils import encode_image_bytes
@@ -61,21 +61,69 @@ Use `st.code()` blocks to easily copy captions for manual posting.
 
 # --- Media selection ---
 with st.sidebar:
-    st.subheader("Select Media")
+    st.subheader("Find Media")
+
+    categories = fetch_distinct_values("category")
+    selected_cats = st.multiselect("Category", categories, key="lab_cat")
+
+    subcategories = fetch_distinct_values("subcategory")
+    selected_subcats = st.multiselect("Subcategory", subcategories, key="lab_subcat")
+
+    ambiances = fetch_distinct_values("ambiance")
+    selected_ambiances = st.multiselect("Ambiance", ambiances, key="lab_amb")
+
+    seasons_filter = fetch_distinct_values("season")
+    selected_seasons = st.multiselect("Season filter", seasons_filter, key="lab_season_filter")
+
+    min_quality = st.slider("Min quality", 1, 10, 1, key="lab_qual")
+
+    search = st.text_input("Search filename", key="lab_search")
+    elements_search = st.text_input("Search elements", key="lab_elem_search",
+                                     help="e.g. piscine, vue_mer, terrasse")
+
+    st.divider()
+
+    # Build filtered list — images only
     all_media = fetch_all_media(media_type="image")
 
-    # Search by name
-    search = st.text_input("Search by filename", key="lab_search")
+    if selected_cats:
+        all_media = [m for m in all_media if m.get("category") in selected_cats]
+    if selected_subcats:
+        all_media = [m for m in all_media if m.get("subcategory") in selected_subcats]
+    if selected_ambiances:
+        all_media = [
+            m for m in all_media
+            if isinstance(m.get("ambiance"), list)
+            and any(a in selected_ambiances for a in m["ambiance"])
+        ]
+    if selected_seasons:
+        all_media = [
+            m for m in all_media
+            if isinstance(m.get("season"), list)
+            and any(s in selected_seasons for s in m["season"])
+        ]
+    all_media = [m for m in all_media if (m.get("ig_quality") or 0) >= min_quality]
     if search:
-        all_media = [m for m in all_media if search.lower() in m.get("file_name", "").lower()]
+        all_media = [
+            m for m in all_media
+            if search.lower() in m.get("file_name", "").lower()
+        ]
+    if elements_search:
+        kw = elements_search.lower()
+        all_media = [
+            m for m in all_media
+            if isinstance(m.get("elements"), list)
+            and any(kw in e.lower() for e in m["elements"])
+        ]
 
-    # Quick select from list
-    media_options = {m["file_name"]: m["id"] for m in all_media[:100]}
+    st.caption(f"{len(all_media)} images match")
+
+    media_options = {m["file_name"]: m["id"] for m in all_media}
     if media_options:
-        selected_name = st.selectbox("File", list(media_options.keys()), key="lab_select")
+        selected_name = st.selectbox("Select", list(media_options.keys()), key="lab_select")
         media_id = media_options[selected_name]
     else:
-        st.warning("No images found.")
+        st.warning("No images match the current filters.")
         st.stop()
 
     st.divider()
