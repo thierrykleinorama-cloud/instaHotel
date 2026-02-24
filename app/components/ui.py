@@ -47,6 +47,13 @@ def sidebar_css():
             padding: 2px 6px;
             border-radius: 4px;
         }
+        /* Indent AI Lab subpages (7th and 8th sidebar nav items, counting main) */
+        [data-testid="stSidebarNavItems"] li:nth-child(7) a,
+        [data-testid="stSidebarNavItems"] li:nth-child(8) a {
+            padding-left: 2rem !important;
+            font-size: 0.85em !important;
+            font-style: italic !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
