@@ -1,14 +1,20 @@
 # INSTA HOTEL - Task Tracking
-# Version: 1.0 - 23 fevrier 2026
+# Version: 1.1 - 24 fevrier 2026
 
 ---
 
-## Phase 1 : Mediatheque Intelligente (Sem. 1-2)
-- [ ] Setup projet (repo, Supabase, .env)
-- [ ] Schema DB: table media_library
-- [ ] Script indexeur photos (Claude Vision / Gemini Vision)
-- [ ] Tagging multi-niveaux (categorie, ambiance, saison, qualite)
-- [ ] Stockage metadonnees Supabase
+## Phase 1 : Mediatheque Intelligente (Sem. 1-2) — COMPLETE
+- [x] Setup projet (repo GitHub, venv, Supabase, .env, .gitignore)
+- [x] Schema DB: table media_library (25+ colonnes, triggers, indexes)
+- [x] Service Google Drive (OAuth, listing recursif, download)
+- [x] Modeles Pydantic (VisionAnalysis, MediaItem, SceneAnalysis)
+- [x] Analyseur Claude Vision (prompt hotel, JSON parsing, validation)
+- [x] Analyseur video (detection scenes OpenCV, extraction keyframes, analyse par scene)
+- [x] Orchestrateur media_indexer (dedup, rate limiting, error recovery, CLI)
+- [x] Indexation complete: 531/532 fichiers analyses (377 images + 155 videos)
+- [x] Descriptions bilingues FR/EN pour chaque media et scene
+- [x] Support HEIC via pillow-heif
+- [x] Commit + push GitHub (repo prive instaHotel)
 
 ## Phase 2 : Moteur de Strategie Editoriale (Sem. 2-3)
 - [ ] Tables: editorial_calendar, editorial_rules, seasonal_themes

@@ -59,6 +59,10 @@
 **Observation** : Videos cost ~3x more than images (multiple scenes × multiple frames per Claude call). 155 videos with ~3 scenes avg = ~465 Claude calls.
 **Regle** : Budget video analysis separately from image analysis.
 
+## Lesson 2026-02-24 — Update todo.md as you go
+**Erreur** : Completed all Phase 1 steps but forgot to mark them done in `tasks/todo.md` along the way.
+**Regle** : Update `tasks/todo.md` after completing each step, not just at the end. The user expects real-time progress tracking.
+
 ---
 
 ## Regles du projet
