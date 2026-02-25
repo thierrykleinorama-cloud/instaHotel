@@ -83,6 +83,18 @@
 **Observation** : Instead of building a batch enhancement script immediately, adding a testing tab to AI Lab lets the user evaluate API quality and cost manually first.
 **Regle** : For new AI integrations, always build a single-image testing UI first. Batch processing comes after the user validates the approach.
 
+## Lesson 2026-02-25 — Test before user
+**Erreur** : Asked user to test outpaint multiple times with back-and-forth debugging instead of testing myself first.
+**Regle** : Always test changes yourself first: 1) Python script on the actual image, 2) Playwright browser check. Save outputs with meaningful names (e.g. `IMG_4176_Outpaint_9_16.png`) in `test_outputs/`. Only ask user to test after confirming it works.
+
+## Lesson 2026-02-25 — Stability AI outpaint parameter names
+**Erreur** : Used `top`/`bottom` for padding but API expects `up`/`bottom`/`left`/`right` (inconsistent naming).
+**Regle** : Stability AI outpaint uses `up` (not `top`), but keeps `bottom` as-is. Always check actual API error messages for parameter names.
+
+## Lesson 2026-02-25 — Streamlit caches imported modules
+**Erreur** : Changed service files but Streamlit kept serving old code despite clearing `__pycache__`.
+**Regle** : Streamlit hot-reloads page files but keeps service modules cached in the Python process. Must `taskkill //F //IM streamlit.exe` and restart — `pkill` may not kill all instances on Windows/MINGW.
+
 ---
 
 ## Regles du projet

@@ -70,6 +70,8 @@ def generate_captions(
     include_image: bool = False,
     image_base64: Optional[str] = None,
     model: str = DEFAULT_MODEL,
+    system_prompt: Optional[str] = None,
+    user_prompt: Optional[str] = None,
 ) -> dict:
     """
     Generate Instagram captions via Claude API.
@@ -79,7 +81,8 @@ def generate_captions(
     """
     client = _get_client()
 
-    prompt_text = build_prompt(media, theme, season, cta_type)
+    prompt_text = user_prompt if user_prompt is not None else build_prompt(media, theme, season, cta_type)
+    sys_prompt = system_prompt if system_prompt is not None else SYSTEM_PROMPT
 
     content = []
     if include_image and image_base64:
@@ -98,7 +101,7 @@ def generate_captions(
     response = client.messages.create(
         model=model,
         max_tokens=2000,
-        system=SYSTEM_PROMPT,
+        system=sys_prompt,
         messages=[{"role": "user", "content": content}],
     )
 

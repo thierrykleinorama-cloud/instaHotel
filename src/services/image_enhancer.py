@@ -141,9 +141,18 @@ STABILITY_METHODS = {
 }
 
 
+from src.prompts.enhancement import (
+    UPSCALE_PROMPT as DEFAULT_UPSCALE_PROMPT,
+    UPSCALE_NEGATIVE_PROMPT as DEFAULT_UPSCALE_NEGATIVE_PROMPT,
+)
+
+
 def stability_upscale(
     image_bytes: bytes,
     method: str = "fast",
+    prompt: str = DEFAULT_UPSCALE_PROMPT,
+    negative_prompt: str = DEFAULT_UPSCALE_NEGATIVE_PROMPT,
+    creativity: float = 0.35,
 ) -> dict:
     """
     Upscale image via Stability AI.
@@ -171,7 +180,16 @@ def stability_upscale(
         result_bytes = resp.content
     else:
         # Conservative / Creative: async — start generation then poll
+        # These endpoints require a prompt parameter
         url = f"{STABILITY_BASE}/v2beta/stable-image/upscale/{info['path']}"
+        data = {
+            "output_format": "png",
+            "prompt": prompt,
+        }
+        if negative_prompt:
+            data["negative_prompt"] = negative_prompt
+        if method == "conservative":
+            data["creativity"] = str(creativity)
         resp = httpx.post(
             url,
             headers={
@@ -179,12 +197,20 @@ def stability_upscale(
                 "Accept": "application/json",
             },
             files={"image": ("image.png", png, "image/png")},
-            data={"output_format": "png"},
+            data=data,
             timeout=120,
         )
         resp.raise_for_status()
-        generation_id = resp.json()["id"]
-        result_bytes = _stability_poll(api_key, generation_id)
+        body = resp.json()
+        if "image" in body:
+            # Synchronous response — base64 image returned directly
+            import base64
+            result_bytes = base64.b64decode(body["image"])
+        elif "id" in body:
+            # Async response — poll for result
+            result_bytes = _stability_poll(api_key, body["id"])
+        else:
+            raise RuntimeError(f"Unexpected API response keys: {list(body.keys())}")
 
     rw, rh = _image_dimensions(result_bytes)
     return {
@@ -227,7 +253,10 @@ def stability_outpaint(
     """
     api_key = _get_stability_key()
     png = _ensure_png(image_bytes)
-    png = _downscale_for_api(png)  # Stability AI limit: 1 MP
+    # Outpaint: input limit is 9,437,184 pixels, but we must also ensure
+    # the output (input + padding) doesn't exceed limits.
+    # Downscale to 1MP so output stays reasonable.
+    png = _downscale_for_api(png, max_pixels=1_048_576)
     w, h = _image_dimensions(png)
     padding = compute_outpaint_padding(w, h, target_ratio)
 
@@ -246,15 +275,15 @@ def stability_outpaint(
         "output_format": "png",
         "creativity": str(creativity),
     }
-    # Only send non-zero padding values
+    # API uses up/bottom/left/right (not top/bottom)
     if padding["left"] > 0:
-        data["left"] = str(padding["left"])
+        data["left"] = str(min(padding["left"], 2000))
     if padding["right"] > 0:
-        data["right"] = str(padding["right"])
+        data["right"] = str(min(padding["right"], 2000))
     if padding["top"] > 0:
-        data["top"] = str(padding["top"])
+        data["up"] = str(min(padding["top"], 2000))
     if padding["bottom"] > 0:
-        data["bottom"] = str(padding["bottom"])
+        data["bottom"] = str(min(padding["bottom"], 2000))
 
     resp = httpx.post(
         url,
@@ -266,7 +295,13 @@ def stability_outpaint(
         data=data,
         timeout=120,
     )
-    resp.raise_for_status()
+    if resp.status_code != 200:
+        # Error responses come as JSON even with Accept: image/*
+        try:
+            detail = resp.json()
+        except Exception:
+            detail = resp.text[:500]
+        raise RuntimeError(f"Outpaint failed ({resp.status_code}): {detail}")
     result_bytes = resp.content
 
     rw, rh = _image_dimensions(result_bytes)
@@ -294,16 +329,19 @@ def replicate_upscale(
     """
     import replicate as replicate_sdk
     import base64
+    from httpx import Timeout
 
     api_key = _get_replicate_key()
-    os.environ["REPLICATE_API_TOKEN"] = api_key
+    client = replicate_sdk.Client(api_token=api_key, timeout=Timeout(300, connect=30))
 
     png = _ensure_png(image_bytes)
+    # Real-ESRGAN GPU limit ~2MP input
+    png = _downscale_for_api(png, max_pixels=2_000_000)
     # Replicate expects a data URI
     b64 = base64.b64encode(png).decode()
     data_uri = f"data:image/png;base64,{b64}"
 
-    output = replicate_sdk.run(
+    output = client.run(
         "nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa",
         input={
             "image": data_uri,
@@ -330,12 +368,7 @@ def replicate_upscale(
 RETOUCH_RESOLUTIONS = ["1K", "2K", "4K"]
 RETOUCH_COSTS = {"1K": 0.15, "2K": 0.15, "4K": 0.30}
 
-DEFAULT_RETOUCH_PROMPT = (
-    "Enhance this hotel photograph for a luxury hospitality marketing portfolio. "
-    "Improve natural lighting, boost color vibrancy, increase sharpness and clarity, "
-    "fix white balance, and make it look professionally shot. "
-    "Keep the exact same scene, composition, and all objects — only improve the visual quality."
-)
+from src.prompts.enhancement import RETOUCH_PROMPT as DEFAULT_RETOUCH_PROMPT
 
 
 def replicate_retouch(
@@ -350,15 +383,16 @@ def replicate_retouch(
     """
     import replicate as replicate_sdk
     import base64
+    from httpx import Timeout
 
     api_key = _get_replicate_key()
-    os.environ["REPLICATE_API_TOKEN"] = api_key
+    client = replicate_sdk.Client(api_token=api_key, timeout=Timeout(300, connect=30))
 
     png = _ensure_png(image_bytes)
     b64 = base64.b64encode(png).decode()
     data_uri = f"data:image/png;base64,{b64}"
 
-    output = replicate_sdk.run(
+    output = client.run(
         "google/nano-banana-pro",
         input={
             "prompt": prompt,

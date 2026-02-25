@@ -28,7 +28,10 @@ from src.services.image_enhancer import (
     TARGET_RATIOS,
     RETOUCH_RESOLUTIONS,
     RETOUCH_COSTS,
-    DEFAULT_RETOUCH_PROMPT,
+)
+from src.prompts.enhancement import (
+    UPSCALE_PROMPT,
+    RETOUCH_PROMPT,
 )
 from src.services.vision_analyzer import get_raw_response as vision_reanalyze
 
@@ -61,28 +64,52 @@ operation = st.radio(
 
 if operation == "Upscale":
     st.info(
-        "**Increase resolution** with AI super-resolution (2x or 4x). "
+        "**Increase resolution** with AI super-resolution. "
         "Adds realistic detail instead of just stretching pixels. "
         "Best for: making small images sharper for full-screen display."
     )
     backend = st.selectbox("Backend", ["Stability AI", "Replicate"], key="enh_backend")
 
     if backend == "Stability AI":
-        st.caption("Fast $0.02 / Conservative $0.40 / Creative $0.60")
+        st.caption(
+            "Fast \\$0.02 / Conservative \\$0.40 / Creative \\$0.60 "
+            "— [buy credits](https://platform.stability.ai/account/credits)"
+        )
         method_options = {v["description"]: k for k, v in STABILITY_METHODS.items()}
         method_label = st.selectbox("Method", list(method_options.keys()), key="enh_stab_method")
         method = method_options[method_label]
+
+        if method in ("conservative", "creative"):
+            upscale_prompt = st.text_area(
+                "Upscale prompt",
+                value=UPSCALE_PROMPT,
+                height=80,
+                key="enh_upscale_prompt",
+                help="Describe the image content to guide the upscaler. Editable per generation.",
+            )
+        if method == "conservative":
+            upscale_creativity = st.slider(
+                "Creativity", 0.1, 0.5, 0.35, 0.05, key="enh_upscale_creativity",
+                help="Higher = more detail added. Default 0.35.",
+            )
     else:
-        st.caption("Real-ESRGAN 4x (~$0.01)")
-        scale = st.selectbox("Scale", [2, 4], index=1, key="enh_rep_scale")
+        scale_options = {
+            "2x — double resolution (~$0.006)": 2,
+            "4x — quadruple resolution (~$0.012)": 4,
+        }
+        scale_label = st.selectbox("Scale", list(scale_options.keys()), index=1, key="enh_rep_scale")
+        scale = scale_options[scale_label]
+        st.caption(
+            f"Real-ESRGAN: {orig_w}x{orig_h} → ~{orig_w * scale}x{orig_h * scale} "
+            f"(output may be slightly smaller if input is downscaled for GPU)"
+        )
 
 elif operation == "AI Retouch":
     st.info(
         "**AI reimagines the photo** with better lighting, colors, and clarity "
-        "using Nano Banana Pro (Gemini 3 Pro Image). You control the prompt. "
+        "using **Nano Banana Pro** (via Replicate). You control the prompt below. "
         "The scene stays the same — only visual quality improves. "
-        "Best for: fixing poor lighting, dull colors, or flat atmosphere. "
-        "Cost: $0.15 (2K) / $0.30 (4K)."
+        "Best for: fixing poor lighting, dull colors, or flat atmosphere."
     )
     retouch_resolution = st.selectbox(
         "Resolution",
@@ -93,10 +120,10 @@ elif operation == "AI Retouch":
     )
     retouch_prompt = st.text_area(
         "Retouch prompt",
-        value=DEFAULT_RETOUCH_PROMPT,
+        value=RETOUCH_PROMPT,
         height=120,
         key="enh_retouch_prompt",
-        help="Describe what to improve. Keep 'same scene/composition' instructions to avoid hallucinations.",
+        help="Editable per generation. Describe what to improve. Keep 'same scene/composition' to avoid hallucinations.",
     )
 
 elif operation == "Outpaint":
@@ -104,26 +131,17 @@ elif operation == "Outpaint":
         "**Extend the image** beyond its borders with AI-generated content. "
         "Converts landscape (16:9) to portrait (4:5) for Instagram by generating "
         "new pixels at top/bottom — no cropping needed. "
-        "Best for: adapting photos to Instagram's preferred aspect ratios. Cost: $0.04."
+        "Best for: adapting photos to Instagram's preferred aspect ratios. "
+        "Cost: \\$0.04 — [buy credits](https://platform.stability.ai/account/credits)"
     )
     target_ratio = st.selectbox("Target ratio", list(TARGET_RATIOS.keys()), key="enh_ratio")
     creativity = st.slider("Creativity", 0.1, 1.0, 0.5, 0.1, key="enh_creativity")
 
-    # Padding preview
+    # Output size preview
     padding = compute_outpaint_padding(orig_w, orig_h, target_ratio)
     if any(padding[k] > 0 for k in ("left", "right", "top", "bottom")):
-        parts = []
-        if padding["top"] > 0:
-            parts.append(f"Top: {padding['top']}px")
-        if padding["bottom"] > 0:
-            parts.append(f"Bottom: {padding['bottom']}px")
-        if padding["left"] > 0:
-            parts.append(f"Left: {padding['left']}px")
-        if padding["right"] > 0:
-            parts.append(f"Right: {padding['right']}px")
-        st.info(
-            f"Padding: {', '.join(parts)} => "
-            f"{padding['new_w']}x{padding['new_h']}"
+        st.caption(
+            f"Output: {orig_w}x{orig_h} → **{padding['new_w']}x{padding['new_h']}** ({target_ratio})"
         )
     else:
         st.success("Image already matches the target ratio.")
@@ -136,7 +154,12 @@ if st.button("Enhance", type="primary", use_container_width=True, key="enh_go"):
         try:
             if operation == "Upscale":
                 if backend == "Stability AI":
-                    enh_result = stability_upscale(raw_bytes, method=method)
+                    kwargs = {"method": method}
+                    if method in ("conservative", "creative"):
+                        kwargs["prompt"] = upscale_prompt
+                    if method == "conservative":
+                        kwargs["creativity"] = upscale_creativity
+                    enh_result = stability_upscale(raw_bytes, **kwargs)
                 else:
                     enh_result = replicate_upscale(raw_bytes, scale=scale)
             elif operation == "AI Retouch":

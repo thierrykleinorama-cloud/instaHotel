@@ -84,10 +84,6 @@ with st.sidebar:
 
 # --- Model selection ---
 model_labels = {v["label"]: k for k, v in AVAILABLE_MODELS.items()}
-model_details = {
-    v["label"]: f"Input: ${v['input_per_mtok']}/Mtok | Output: ${v['output_per_mtok']}/Mtok"
-    for v in AVAILABLE_MODELS.values()
-}
 default_label = AVAILABLE_MODELS[DEFAULT_MODEL]["label"]
 selected_model_label = st.selectbox(
     "Model",
@@ -96,19 +92,32 @@ selected_model_label = st.selectbox(
     key="cap_model",
     help="Choose AI model: better models = higher quality but more expensive",
 )
-st.caption(model_details[selected_model_label])
+_sel_info = AVAILABLE_MODELS[model_labels[selected_model_label]]
+st.caption(
+    f"Input: {_sel_info['input_per_mtok']}/Mtok "
+    f"| Output: {_sel_info['output_per_mtok']}/Mtok"
+)
 selected_model = model_labels[selected_model_label]
 
-# --- Show prompt ---
+# --- Editable prompts ---
 filled_prompt = build_prompt(media, theme, season, cta_type)
 
-with st.expander("View prompt", expanded=False):
-    st.markdown("**System prompt:**")
-    st.code(SYSTEM_PROMPT, language=None)
-    st.markdown("**User prompt:**")
-    st.code(filled_prompt, language=None)
-    if include_image:
-        st.caption("+ image will be attached to the request")
+system_prompt = st.text_area(
+    "System prompt",
+    value=SYSTEM_PROMPT,
+    height=100,
+    key="cap_system_prompt",
+    help="Editable per generation. Defines the AI's role and tone.",
+)
+user_prompt = st.text_area(
+    "User prompt",
+    value=filled_prompt,
+    height=200,
+    key="cap_user_prompt",
+    help="Editable per generation. Auto-filled from media metadata + editorial context above.",
+)
+if include_image:
+    st.caption("+ image will be attached to the request")
 
 st.divider()
 
@@ -133,6 +142,8 @@ if generate_clicked or regenerate_clicked:
                 include_image=include_image,
                 image_base64=image_b64,
                 model=selected_model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
             )
             st.session_state["cap_result"] = result
         except Exception as e:
