@@ -50,6 +50,24 @@ _SONNET_OPTIONS = [
     ("Sonnet 4.6", "claude-sonnet-4-6"),
 ]
 
+# CTA options (same as AI Captions page)
+_CTA_OPTIONS = {
+    "Link in bio": "link_bio",
+    "Send a DM": "dm",
+    "Book now": "book_now",
+    "Comment": "comment",
+    "Tag a friend": "tag_friend",
+    "Save this post": "save_post",
+    "Share": "share",
+    "Visit website": "visit_website",
+    "Call us": "call_us",
+    "Special offer": "offer",
+    "Poll": "poll",
+    "Discover Sitges": "location",
+}
+_CTA_LABELS = list(_CTA_OPTIONS.keys())
+_CTA_LABELS_WITH_AUTO = ["Auto (from theme)"] + _CTA_LABELS
+
 sidebar_css()
 
 # Reduce Streamlit's default wide margins while keeping it breathable
@@ -155,6 +173,12 @@ with st.sidebar:
     )
     batch_model = dict(_SONNET_OPTIONS)[batch_model_label]
 
+    batch_cta_label = st.selectbox(
+        "Call to Action", _CTA_LABELS_WITH_AUTO, key="cal_batch_cta",
+        help="Auto = each slot uses its theme CTA; pick one to override all",
+    )
+    batch_cta = _CTA_OPTIONS.get(batch_cta_label)  # None if "Auto (from theme)"
+
     batch_include_image = st.checkbox(
         "Include images in prompt",
         value=False,
@@ -218,6 +242,7 @@ with st.sidebar:
                     model=batch_model,
                     include_image=batch_include_image,
                     image_base64=image_b64,
+                    cta_override=batch_cta,
                 )
                 if result:
                     success_count += 1
@@ -360,6 +385,9 @@ else:
                     _fname = media["file_name"] if media else media_id[:8]
                     _iq = media.get("ig_quality") if media else None
                     st.caption(f"{_fname} — quality: {_iq}/10" if _iq else _fname)
+                    _desc_en = media.get("description_en") if media else None
+                    if _desc_en:
+                        st.caption(_desc_en)
                 else:
                     st.caption("No media assigned")
 
@@ -470,36 +498,42 @@ else:
                     def _pin_regen(eid=entry["id"]):
                         st.session_state["cal_expanded_id"] = eid
 
-                    _rc1, _rc2, _rc3 = st.columns([1, 1, 1])
+                    _rc1, _rc2, _rc3, _rc4 = st.columns([1, 1, 1, 1])
                     with _rc1:
                         regen_model_label = st.selectbox("Model", [l for l, _ in _SONNET_OPTIONS], key=f"cap_regen_model_{entry['id']}", on_change=_pin_regen)
                     with _rc2:
-                        regen_img = st.checkbox("Include image", key=f"cap_regen_img_{entry['id']}", on_change=_pin_regen)
-                    regen_model = dict(_SONNET_OPTIONS)[regen_model_label]
-                    from src.services.caption_generator import compute_cost as _cc
-                    _rest = _cc(regen_model, 2000 if regen_img else 800, 600)
-                    st.caption(f"Est. ~${_rest:.4f}")
+                        regen_cta_label = st.selectbox("CTA", _CTA_LABELS, key=f"cap_regen_cta_{entry['id']}", on_change=_pin_regen)
                     with _rc3:
-                        if st.button("Confirm Regenerate", key=f"cap_regen_go_{entry['id']}", type="primary", use_container_width=True):
-                            with st.spinner("Regenerating captions..."):
-                                try:
-                                    image_b64 = None
-                                    if regen_img and media_id:
-                                        from src.services.media_queries import fetch_media_by_id as _fetch
-                                        from src.services.google_drive import download_file_bytes
-                                        from src.utils import encode_image_bytes
-                                        _m = _fetch(media_id)
-                                        if _m and _m.get("drive_file_id"):
-                                            image_b64 = encode_image_bytes(download_file_bytes(_m["drive_file_id"]))
-                                    result = generate_for_slot(entry=entry, model=regen_model, include_image=regen_img, image_base64=image_b64)
-                                    if result:
-                                        st.session_state[f"regen_open_{entry['id']}"] = False
-                                        st.success("New captions generated!")
-                                        st.rerun()
-                                    else:
-                                        st.error("Generation failed — no media assigned?")
-                                except Exception as e:
-                                    st.error(f"Generation failed: {e}")
+                        regen_img = st.selectbox("Image in prompt", ["No", "Yes"], key=f"cap_regen_img_{entry['id']}", on_change=_pin_regen)
+                    with _rc4:
+                        st.markdown("<div style='height: 24px'></div>", unsafe_allow_html=True)
+                        _regen_go = st.button("Confirm Regenerate", key=f"cap_regen_go_{entry['id']}", type="primary", use_container_width=True)
+                    regen_model = dict(_SONNET_OPTIONS)[regen_model_label]
+                    regen_cta = _CTA_OPTIONS[regen_cta_label]
+                    regen_include = regen_img == "Yes"
+                    from src.services.caption_generator import compute_cost as _cc
+                    _rest = _cc(regen_model, 2000 if regen_include else 800, 600)
+                    st.caption(f"Est. ~${_rest:.4f}")
+                    if _regen_go:
+                        with st.spinner("Regenerating captions..."):
+                            try:
+                                image_b64 = None
+                                if regen_include and media_id:
+                                    from src.services.media_queries import fetch_media_by_id as _fetch
+                                    from src.services.google_drive import download_file_bytes
+                                    from src.utils import encode_image_bytes
+                                    _m = _fetch(media_id)
+                                    if _m and _m.get("drive_file_id"):
+                                        image_b64 = encode_image_bytes(download_file_bytes(_m["drive_file_id"]))
+                                result = generate_for_slot(entry=entry, model=regen_model, include_image=regen_include, image_base64=image_b64, cta_override=regen_cta)
+                                if result:
+                                    st.session_state[f"regen_open_{entry['id']}"] = False
+                                    st.success("New captions generated!")
+                                    st.rerun()
+                                else:
+                                    st.error("Generation failed — no media assigned?")
+                            except Exception as e:
+                                st.error(f"Generation failed: {e}")
 
             else:
                 # No captions yet
@@ -507,14 +541,19 @@ else:
                     def _pin_expander(eid=entry["id"]):
                         st.session_state["cal_expanded_id"] = eid
 
-                    _gc1, _gc2, _gc3 = st.columns([1, 1, 1])
+                    _gc1, _gc2, _gc3, _gc4 = st.columns([1, 1, 1, 1])
                     with _gc1:
                         slot_model_label = st.selectbox("Model", [l for l, _ in _SONNET_OPTIONS], key=f"cap_model_{entry['id']}", on_change=_pin_expander)
                     with _gc2:
-                        inc_img = st.checkbox("Include image", value=False, key=f"cap_img_{entry['id']}", on_change=_pin_expander)
+                        slot_cta_label = st.selectbox("CTA", _CTA_LABELS, key=f"cap_cta_{entry['id']}", on_change=_pin_expander)
                     with _gc3:
+                        slot_img_sel = st.selectbox("Image in prompt", ["No", "Yes"], key=f"cap_img_{entry['id']}", on_change=_pin_expander)
+                    with _gc4:
+                        st.markdown("<div style='height: 24px'></div>", unsafe_allow_html=True)
                         _gen_clicked = st.button("Generate Captions", key=f"cap_gen_{entry['id']}", type="primary", use_container_width=True, on_click=_pin_expander)
                     slot_model = dict(_SONNET_OPTIONS)[slot_model_label]
+                    slot_cta = _CTA_OPTIONS[slot_cta_label]
+                    inc_img = slot_img_sel == "Yes"
                     from src.services.caption_generator import compute_cost
                     _est = compute_cost(slot_model, 2000 if inc_img else 800, 600)
                     st.caption(f"Est. ~${_est:.4f}")
@@ -529,7 +568,7 @@ else:
                                     _m = _fetch(media_id)
                                     if _m and _m.get("drive_file_id"):
                                         image_b64 = encode_image_bytes(download_file_bytes(_m["drive_file_id"]))
-                                result = generate_for_slot(entry=entry, model=slot_model, include_image=inc_img, image_base64=image_b64)
+                                result = generate_for_slot(entry=entry, model=slot_model, include_image=inc_img, image_base64=image_b64, cta_override=slot_cta)
                                 if result:
                                     st.success("Captions generated!")
                                     st.rerun()

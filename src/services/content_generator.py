@@ -59,6 +59,7 @@ def generate_for_slot(
     model: str = DEFAULT_MODEL,
     include_image: bool = False,
     image_base64: Optional[str] = None,
+    cta_override: Optional[str] = None,
 ) -> Optional[dict]:
     """Generate captions for a calendar slot, save to DB, and link.
 
@@ -67,6 +68,7 @@ def generate_for_slot(
         model: Claude model ID
         include_image: whether to include the image in the prompt
         image_base64: pre-encoded base64 image (if include_image is True)
+        cta_override: if set, use this CTA instead of theme-derived one
 
     Returns the generated_content row dict (with id), or None on error.
     """
@@ -76,12 +78,14 @@ def generate_for_slot(
     if not media:
         return None
 
+    cta_type = cta_override if cta_override else ctx["cta_type"]
+
     # Generate captions via Claude
     result = generate_captions(
         media=media,
         theme=ctx["theme_name"],
         season=ctx["season"],
-        cta_type=ctx["cta_type"],
+        cta_type=cta_type,
         include_image=include_image,
         image_base64=image_base64,
         model=model,
@@ -113,7 +117,7 @@ def generate_for_slot(
             "include_image": include_image,
             "theme": ctx["theme_name"],
             "season": ctx["season"],
-            "cta_type": ctx["cta_type"],
+            "cta_type": cta_type,
         },
         "content_status": "draft",
     }
