@@ -13,11 +13,12 @@ from src.prompts.caption_generation import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 # Available models for AI Lab
 AVAILABLE_MODELS = {
     "claude-sonnet-4-6": {"label": "Sonnet 4.6", "input_per_mtok": 3.0, "output_per_mtok": 15.0},
+    "claude-sonnet-4-5-20241022": {"label": "Sonnet 4.5", "input_per_mtok": 3.0, "output_per_mtok": 15.0},
     "claude-opus-4-6": {"label": "Opus 4.6", "input_per_mtok": 15.0, "output_per_mtok": 75.0},
     "claude-haiku-4-5-20251001": {"label": "Haiku 4.5", "input_per_mtok": 0.80, "output_per_mtok": 4.0},
 }
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = "claude-sonnet-4-5-20241022"
 
 
 def _get_client() -> anthropic.Anthropic:

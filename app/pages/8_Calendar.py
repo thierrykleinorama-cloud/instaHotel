@@ -1,6 +1,7 @@
 """
 InstaHotel — Editorial Calendar
 Generate, browse, and manage the posting calendar with scored media assignments.
+Includes AI caption generation per slot and batch generation.
 """
 import sys
 from pathlib import Path
@@ -31,18 +32,48 @@ from src.services.editorial_engine import (
     _fetch_analyzed_media,
     _fetch_recent_media_ids,
 )
+from src.services.content_queries import (
+    fetch_content_for_calendar,
+    fetch_content_for_calendar_range,
+    update_content,
+    update_content_status,
+)
+from src.services.content_generator import (
+    generate_for_slot,
+    estimate_batch_cost,
+)
+from src.services.caption_generator import AVAILABLE_MODELS, DEFAULT_MODEL
+
+# Sonnet model picker — short labels, default first
+_SONNET_OPTIONS = [
+    ("Sonnet 4.5", "claude-sonnet-4-5-20241022"),
+    ("Sonnet 4.6", "claude-sonnet-4-6"),
+]
 
 sidebar_css()
+
+# Reduce Streamlit's default wide margins while keeping it breathable
+st.markdown("""
+<style>
+    .block-container { padding-left: 3.5rem !important; padding-right: 3.5rem !important; max-width: 100% !important; }
+</style>
+""", unsafe_allow_html=True)
+
 page_title("Calendar", "Editorial posting calendar")
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 STATUS_COLORS = {
     "planned": "gray",
     "generated": "blue",
+    "content_ready": "violet",
     "validated": "green",
     "published": "violet",
     "skipped": "orange",
 }
+
+# Track which expander the user last interacted with (persists across reruns)
+if "cal_expanded_id" not in st.session_state:
+    st.session_state["cal_expanded_id"] = None
 
 # -------------------------------------------------------
 # Sidebar controls
@@ -85,8 +116,8 @@ with st.sidebar:
     st.divider()
     status_filter = st.multiselect(
         "Filter by Status",
-        ["planned", "generated", "validated", "published", "skipped"],
-        default=["generated", "validated", "planned"],
+        ["planned", "generated", "content_ready", "validated", "published", "skipped"],
+        default=["generated", "content_ready", "validated", "planned"],
         key="cal_status_filter",
     )
 
@@ -102,10 +133,134 @@ if not calendar_data:
     st.info("No calendar entries for this range. Use the sidebar to generate.")
     st.stop()
 
+# Pre-fetch content for all visible calendar entries
+_calendar_ids = [e["id"] for e in calendar_data]
+_content_map = fetch_content_for_calendar_range(_calendar_ids)
+
+# -------------------------------------------------------
+# Sidebar — Batch Caption Generation
+# -------------------------------------------------------
+with st.sidebar:
+    st.divider()
+    st.subheader("Caption Generation")
+
+    batch_scope = st.radio(
+        "Scope",
+        ["Slots without captions", "All slots with media"],
+        key="cal_batch_scope",
+    )
+
+    batch_model_label = st.selectbox(
+        "Model", [l for l, _ in _SONNET_OPTIONS], key="cal_batch_model",
+    )
+    batch_model = dict(_SONNET_OPTIONS)[batch_model_label]
+
+    batch_include_image = st.checkbox(
+        "Include images in prompt",
+        value=False,
+        help="Sends photos to Claude Vision for richer captions (~2x cost)",
+        key="cal_batch_include_img",
+    )
+
+    # Filter eligible entries
+    if batch_scope == "Slots without captions":
+        batch_entries = [
+            e for e in calendar_data
+            if (e.get("media_id") or e.get("manual_media_id"))
+            and e["id"] not in _content_map
+        ]
+    else:
+        batch_entries = [
+            e for e in calendar_data
+            if e.get("media_id") or e.get("manual_media_id")
+        ]
+
+    # Cost estimate
+    if batch_entries:
+        estimate = estimate_batch_cost(batch_entries, batch_model, batch_include_image)
+        st.caption(
+            f"{estimate['slot_count']} slots | "
+            f"~${estimate['estimated_cost_usd']:.3f} "
+            f"({estimate['model_label']})"
+        )
+    else:
+        st.caption("No eligible slots")
+
+    if st.button(
+        "Generate Captions (Batch)",
+        type="primary",
+        use_container_width=True,
+        disabled=len(batch_entries) == 0,
+        key="cal_batch_gen",
+    ):
+        progress_bar = st.progress(0, text="Generating captions...")
+        success_count = 0
+        total = len(batch_entries)
+        total_cost = 0.0
+
+        for i, entry in enumerate(batch_entries):
+            try:
+                # Optionally download and encode image
+                image_b64 = None
+                if batch_include_image:
+                    media_id = entry.get("manual_media_id") or entry.get("media_id")
+                    if media_id:
+                        from src.services.media_queries import fetch_media_by_id
+                        media = fetch_media_by_id(media_id)
+                        if media and media.get("drive_file_id"):
+                            from src.services.google_drive import download_file_bytes
+                            from src.utils import encode_image_bytes
+                            raw = download_file_bytes(media["drive_file_id"])
+                            image_b64 = encode_image_bytes(raw)
+
+                result = generate_for_slot(
+                    entry=entry,
+                    model=batch_model,
+                    include_image=batch_include_image,
+                    image_base64=image_b64,
+                )
+                if result:
+                    success_count += 1
+                    total_cost += result.get("cost_usd", 0)
+            except Exception as e:
+                st.warning(f"Failed for {entry['post_date']} S{entry.get('slot_index', 1)}: {e}")
+
+            progress_bar.progress((i + 1) / total, text=f"Generated {i + 1}/{total}...")
+
+        progress_bar.empty()
+        st.success(f"Generated captions for {success_count}/{total} slots (${total_cost:.4f})")
+        st.rerun()
+
 # -------------------------------------------------------
 # View toggle
 # -------------------------------------------------------
 view_mode = st.radio("View", ["Week Grid", "List"], horizontal=True, key="cal_view")
+
+with st.expander("Status workflow & actions guide", expanded=False):
+    st.markdown("""
+**Slot statuses** — each calendar slot progresses through this workflow:
+
+| Status | Meaning |
+|---|---|
+| :gray[●] **planned** | Slot created, media assigned but no captions yet |
+| :blue[●] **generated** | AI captions have been generated (draft) |
+| :violet[●] **content_ready** | Captions linked and ready for review |
+| :green[●] **validated** | You reviewed and approved the post — ready to publish |
+| :violet[●] **published** | Post has been published on Instagram |
+| :orange[●] **skipped** | Slot intentionally skipped (holiday, no content, etc.) |
+
+**Caption actions:**
+- **Save Edits** — save your manual edits to the captions (sets status to *edited*)
+- **Approve** — mark captions as final and move slot to *validated*
+- **Regenerate** — discard current captions and generate new ones with AI
+
+**Slot actions:**
+- **Validate** — mark the slot as ready to publish (even without captions)
+- **Skip** — mark the slot as intentionally skipped
+- **Published** — mark the slot as already published
+- **Reset** — revert slot back to *generated* status
+- **Swap Media** — replace the assigned photo with an alternative
+""")
 
 # -------------------------------------------------------
 # Week Grid View
@@ -142,13 +297,13 @@ if view_mode == "Week Grid":
                         score = entry.get("media_score")
                         slot = entry.get("slot_index", 1)
                         media_id = entry.get("manual_media_id") or entry.get("media_id")
+                        has_content = entry["id"] in _content_map
 
                         # Show thumbnail if media assigned
                         if media_id:
-                            # Try to get drive_file_id for thumbnail
-                            # We'll just show a colored status indicator
                             score_str = f"{score:.0f}" if score else "—"
-                            st.markdown(f":{STATUS_COLORS.get(status, 'gray')}[●] {cat}")
+                            caption_icon = " &check;" if has_content else ""
+                            st.markdown(f":{STATUS_COLORS.get(status, 'gray')}[●] {cat}{caption_icon}")
                             st.caption(f"S{slot} | {score_str}pts")
                         else:
                             st.markdown(f":gray[○] {cat}")
@@ -171,11 +326,14 @@ else:
         slot = entry.get("slot_index", 1)
         season = entry.get("season_context") or "—"
         media_id = entry.get("manual_media_id") or entry.get("media_id")
+        has_content = entry["id"] in _content_map
 
         score_str = f"{score:.1f}" if score else "—"
         color = STATUS_COLORS.get(status, "gray")
+        caption_tag = " | captions" if has_content else ""
 
-        with st.expander(f":{color}[●] {post_date} — S{slot} | {cat} | {score_str}pts | {status}", expanded=False):
+        _is_expanded = st.session_state.get("cal_expanded_id") == entry["id"]
+        with st.expander(f":{color}[●] {post_date} — S{slot} | {cat} | {score_str}pts | {status}{caption_tag}", expanded=_is_expanded):
             c1, c2 = st.columns([2, 1])
 
             with c1:
@@ -183,18 +341,13 @@ else:
                 st.markdown(f"**Season:** {season}  \n**Theme:** {theme}")
                 st.markdown(f"**Score:** {score_str}  \n**Status:** :{color}[{status}]")
 
-                # Score breakdown
                 breakdown = entry.get("score_breakdown")
                 if breakdown:
-                    st.markdown("**Score Breakdown:**")
-                    bd_cols = st.columns(6)
-                    for idx, (dim, pts) in enumerate(breakdown.items()):
-                        bd_cols[idx % 6].metric(dim.capitalize(), f"{pts}")
+                    parts = [f"{dim}: {pts}" for dim, pts in breakdown.items()]
+                    st.caption("Score breakdown — " + " · ".join(parts))
 
             with c2:
-                # Media thumbnail
                 if media_id:
-                    # Fetch media details for thumbnail
                     from src.services.media_queries import fetch_media_by_id
                     media = fetch_media_by_id(media_id)
                     if media and media.get("drive_file_id"):
@@ -204,31 +357,212 @@ else:
                                 st.image(f"data:image/jpeg;base64,{thumb}", use_container_width=True)
                         except Exception:
                             st.caption("(thumbnail unavailable)")
-                    st.caption(media["file_name"] if media else media_id[:8])
+                    _fname = media["file_name"] if media else media_id[:8]
+                    _iq = media.get("ig_quality") if media else None
+                    st.caption(f"{_fname} — quality: {_iq}/10" if _iq else _fname)
                 else:
                     st.caption("No media assigned")
 
-            # Actions
+            # -----------------------------------------------
+            # Caption section
+            # -----------------------------------------------
+            st.markdown("---")
+
+            content = _content_map.get(entry["id"])
+
+            if content:
+                def _pin_this(eid=entry["id"]):
+                    st.session_state["cal_expanded_id"] = eid
+
+                content_status = content.get("content_status", "draft")
+                _status_color = {"draft": "gray", "edited": "blue", "approved": "green"}.get(content_status, "gray")
+                st.markdown(f"**Captions** — :{_status_color}[{content_status}]")
+
+                # Usage info
+                if content.get("model"):
+                    st.caption(
+                        f"Model: {content['model']} | "
+                        f"Tokens: {content.get('input_tokens', 0):,} in / {content.get('output_tokens', 0):,} out | "
+                        f"Cost: ${content.get('cost_usd', 0):.4f}"
+                    )
+
+                # Tabs for languages
+                tab_es, tab_en, tab_fr = st.tabs(["ES", "EN", "FR"])
+
+                with tab_es:
+                    new_short_es = st.text_area(
+                        "Short", content.get("caption_short_es", ""),
+                        height=80, key=f"cap_short_es_{entry['id']}"
+                    )
+                    new_story_es = st.text_area(
+                        "Storytelling", content.get("caption_story_es", ""),
+                        height=150, key=f"cap_story_es_{entry['id']}"
+                    )
+
+                with tab_en:
+                    new_short_en = st.text_area(
+                        "Short", content.get("caption_short_en", ""),
+                        height=80, key=f"cap_short_en_{entry['id']}"
+                    )
+                    new_story_en = st.text_area(
+                        "Storytelling", content.get("caption_story_en", ""),
+                        height=150, key=f"cap_story_en_{entry['id']}"
+                    )
+
+                with tab_fr:
+                    new_short_fr = st.text_area(
+                        "Short", content.get("caption_short_fr", ""),
+                        height=80, key=f"cap_short_fr_{entry['id']}"
+                    )
+                    new_story_fr = st.text_area(
+                        "Storytelling", content.get("caption_story_fr", ""),
+                        height=150, key=f"cap_story_fr_{entry['id']}"
+                    )
+
+                # Hashtags
+                existing_hashtags = content.get("hashtags", [])
+                hashtag_str = " ".join(f"#{h}" for h in existing_hashtags) if existing_hashtags else ""
+                new_hashtags = st.text_area(
+                    "Hashtags", hashtag_str, height=60,
+                    key=f"cap_hashtags_{entry['id']}"
+                )
+
+                # Caption actions
+                cap_cols = st.columns(3)
+
+                with cap_cols[0]:
+                    if st.button("Save Edits", key=f"cap_save_{entry['id']}", use_container_width=True, on_click=_pin_this, help="Save your manual text edits (sets status to 'edited')"):
+                        parsed_tags = [t.lstrip("#").strip() for t in new_hashtags.split() if t.strip()]
+                        updates = {
+                            "caption_short_es": new_short_es,
+                            "caption_short_en": new_short_en,
+                            "caption_short_fr": new_short_fr,
+                            "caption_story_es": new_story_es,
+                            "caption_story_en": new_story_en,
+                            "caption_story_fr": new_story_fr,
+                            "hashtags": parsed_tags,
+                            "content_status": "edited",
+                        }
+                        if update_content(content["id"], updates):
+                            st.success("Saved!")
+                            st.rerun()
+
+                with cap_cols[1]:
+                    if st.button(
+                        "Approve", key=f"cap_approve_{entry['id']}",
+                        type="primary", use_container_width=True,
+                        disabled=content_status == "approved",
+                        on_click=_pin_this,
+                        help="Mark captions as final — moves slot to 'validated' status",
+                    ):
+                        update_content_status(content["id"], "approved")
+                        update_calendar_status(entry["id"], "validated")
+                        st.rerun()
+
+                with cap_cols[2]:
+                    _regen_clicked = st.button("Regenerate", key=f"cap_regen_{entry['id']}", use_container_width=True, on_click=_pin_this, help="Generate new AI captions (replaces current ones)")
+
+                # Regenerate options (only shown when clicked or via expander)
+                if _regen_clicked:
+                    st.session_state[f"regen_open_{entry['id']}"] = True
+
+                if st.session_state.get(f"regen_open_{entry['id']}"):
+                    def _pin_regen(eid=entry["id"]):
+                        st.session_state["cal_expanded_id"] = eid
+
+                    _rc1, _rc2, _rc3 = st.columns([1, 1, 1])
+                    with _rc1:
+                        regen_model_label = st.selectbox("Model", [l for l, _ in _SONNET_OPTIONS], key=f"cap_regen_model_{entry['id']}", on_change=_pin_regen)
+                    with _rc2:
+                        regen_img = st.checkbox("Include image", key=f"cap_regen_img_{entry['id']}", on_change=_pin_regen)
+                    regen_model = dict(_SONNET_OPTIONS)[regen_model_label]
+                    from src.services.caption_generator import compute_cost as _cc
+                    _rest = _cc(regen_model, 2000 if regen_img else 800, 600)
+                    st.caption(f"Est. ~${_rest:.4f}")
+                    with _rc3:
+                        if st.button("Confirm Regenerate", key=f"cap_regen_go_{entry['id']}", type="primary", use_container_width=True):
+                            with st.spinner("Regenerating captions..."):
+                                try:
+                                    image_b64 = None
+                                    if regen_img and media_id:
+                                        from src.services.media_queries import fetch_media_by_id as _fetch
+                                        from src.services.google_drive import download_file_bytes
+                                        from src.utils import encode_image_bytes
+                                        _m = _fetch(media_id)
+                                        if _m and _m.get("drive_file_id"):
+                                            image_b64 = encode_image_bytes(download_file_bytes(_m["drive_file_id"]))
+                                    result = generate_for_slot(entry=entry, model=regen_model, include_image=regen_img, image_base64=image_b64)
+                                    if result:
+                                        st.session_state[f"regen_open_{entry['id']}"] = False
+                                        st.success("New captions generated!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Generation failed — no media assigned?")
+                                except Exception as e:
+                                    st.error(f"Generation failed: {e}")
+
+            else:
+                # No captions yet
+                if media_id:
+                    def _pin_expander(eid=entry["id"]):
+                        st.session_state["cal_expanded_id"] = eid
+
+                    _gc1, _gc2, _gc3 = st.columns([1, 1, 1])
+                    with _gc1:
+                        slot_model_label = st.selectbox("Model", [l for l, _ in _SONNET_OPTIONS], key=f"cap_model_{entry['id']}", on_change=_pin_expander)
+                    with _gc2:
+                        inc_img = st.checkbox("Include image", value=False, key=f"cap_img_{entry['id']}", on_change=_pin_expander)
+                    with _gc3:
+                        _gen_clicked = st.button("Generate Captions", key=f"cap_gen_{entry['id']}", type="primary", use_container_width=True, on_click=_pin_expander)
+                    slot_model = dict(_SONNET_OPTIONS)[slot_model_label]
+                    from src.services.caption_generator import compute_cost
+                    _est = compute_cost(slot_model, 2000 if inc_img else 800, 600)
+                    st.caption(f"Est. ~${_est:.4f}")
+                    if _gen_clicked:
+                        with st.spinner("Generating captions..."):
+                            try:
+                                image_b64 = None
+                                if inc_img:
+                                    from src.services.media_queries import fetch_media_by_id as _fetch
+                                    from src.services.google_drive import download_file_bytes
+                                    from src.utils import encode_image_bytes
+                                    _m = _fetch(media_id)
+                                    if _m and _m.get("drive_file_id"):
+                                        image_b64 = encode_image_bytes(download_file_bytes(_m["drive_file_id"]))
+                                result = generate_for_slot(entry=entry, model=slot_model, include_image=inc_img, image_base64=image_b64)
+                                if result:
+                                    st.success("Captions generated!")
+                                    st.rerun()
+                                else:
+                                    st.error("Generation failed — check media assignment.")
+                            except Exception as e:
+                                st.error(f"Generation failed: {e}")
+                else:
+                    st.caption("Assign media first to generate captions.")
+
+            # -----------------------------------------------
+            # Status actions
+            # -----------------------------------------------
             st.markdown("---")
             action_cols = st.columns(5)
 
             with action_cols[0]:
-                if st.button("Validate", key=f"val_{entry['id']}", type="primary", disabled=status == "validated"):
+                if st.button("Validate", key=f"val_{entry['id']}", type="primary", disabled=status == "validated", help="Mark slot as ready to publish"):
                     update_calendar_status(entry["id"], "validated")
                     st.rerun()
 
             with action_cols[1]:
-                if st.button("Skip", key=f"skip_{entry['id']}", disabled=status == "skipped"):
+                if st.button("Skip", key=f"skip_{entry['id']}", disabled=status == "skipped", help="Intentionally skip this slot (holiday, no content, etc.)"):
                     update_calendar_status(entry["id"], "skipped")
                     st.rerun()
 
             with action_cols[2]:
-                if st.button("Published", key=f"pub_{entry['id']}", disabled=status == "published"):
+                if st.button("Published", key=f"pub_{entry['id']}", disabled=status == "published", help="Mark as already published on Instagram"):
                     update_calendar_status(entry["id"], "published")
                     st.rerun()
 
             with action_cols[3]:
-                if st.button("Reset", key=f"reset_{entry['id']}", disabled=status == "generated"):
+                if st.button("Reset", key=f"reset_{entry['id']}", disabled=status == "generated", help="Revert slot back to 'generated' status"):
                     update_calendar_status(entry["id"], "generated")
                     st.rerun()
 
@@ -302,10 +636,13 @@ for e in calendar_data:
     s = e.get("status", "planned")
     by_status[s] = by_status.get(s, 0) + 1
 
-metric_cols = st.columns(len(by_status) + 1)
+captions_count = len(_content_map)
+
+metric_cols = st.columns(len(by_status) + 2)
 metric_cols[0].metric("Total Entries", total)
 for i, (s, count) in enumerate(sorted(by_status.items()), 1):
     metric_cols[i].metric(s.capitalize(), count)
+metric_cols[len(by_status) + 1].metric("Captions Generated", captions_count)
 
 filled = sum(1 for e in calendar_data if e.get("media_id") or e.get("manual_media_id"))
 avg_score = 0.0

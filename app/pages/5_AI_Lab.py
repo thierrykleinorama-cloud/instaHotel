@@ -24,6 +24,52 @@ Choose a tool below to get started. Each tool has its own media selector
 so you can work on different images independently.
 """)
 
+# --- 4-Step Media Pipeline Overview ---
+st.markdown("### Media Pipeline")
+
+p1, p2, p3, p4 = st.columns(4)
+
+with p1:
+    st.markdown("**Step 1: Preprocess**")
+    st.caption("Improve quality — replaces original")
+    st.markdown(
+        ":green[&check;] AI Retouch\n\n"
+        ":green[&check;] Upscale\n\n"
+        ":orange[&rarr;] Object removal"
+    )
+
+with p2:
+    st.markdown("**Step 2: Creative Transform**")
+    st.caption("Multiply library — new entries")
+    st.markdown(
+        ":orange[&rarr;] Seasonal variants\n\n"
+        ":orange[&rarr;] Add elements\n\n"
+        ":orange[&rarr;] Photo-to-video\n\n"
+        ":orange[&rarr;] Avatar presenter\n\n"
+        ":orange[&rarr;] AI Humor scenarios"
+    )
+
+with p3:
+    st.markdown("**Step 3: Retarget**")
+    st.caption("Format adaptation — same media")
+    st.markdown(
+        ":green[&check;] Outpaint\n\n"
+        ":orange[&rarr;] Story/Reel crop\n\n"
+        ":orange[&rarr;] Platform adapt"
+    )
+
+with p4:
+    st.markdown("**Step 4: Content Assembly**")
+    st.caption("Captions + post packaging")
+    st.markdown(
+        ":green[&check;] AI Captions\n\n"
+        ":orange[&rarr;] Tone variants\n\n"
+        ":orange[&rarr;] AI Humor\n\n"
+        ":orange[&rarr;] Carousel"
+    )
+
+st.divider()
+
 # --- Method cards ---
 col_cap, col_enh = st.columns(2)
 

@@ -23,6 +23,7 @@ TABLE_TAG_CORRECTIONS = "tag_corrections"
 TABLE_EDITORIAL_RULES = "editorial_rules"
 TABLE_SEASONAL_THEMES = "seasonal_themes"
 TABLE_EDITORIAL_CALENDAR = "editorial_calendar"
+TABLE_GENERATED_CONTENT = "generated_content"
 
 
 def _get_secret(key: str) -> Optional[str]:
