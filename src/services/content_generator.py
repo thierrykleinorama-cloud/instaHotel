@@ -94,6 +94,7 @@ def generate_for_slot(
     # Extract caption data
     short = result.get("short", {})
     story = result.get("storytelling", {})
+    reel = result.get("reel", {})
     hashtags = result.get("hashtags", [])
     usage = result.get("_usage", {})
 
@@ -121,6 +122,12 @@ def generate_for_slot(
         },
         "content_status": "draft",
     }
+
+    # Add reel captions only for video media
+    if media.get("media_type") == "video" and reel:
+        content_data["caption_reel_es"] = reel.get("es", "")
+        content_data["caption_reel_en"] = reel.get("en", "")
+        content_data["caption_reel_fr"] = reel.get("fr", "")
 
     # Insert into DB
     content_id = insert_content(content_data)

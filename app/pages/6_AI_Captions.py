@@ -182,6 +182,17 @@ if result:
     with story_tab_fr:
         st.text_area("story_fr", story.get("fr", ""), height=220, label_visibility="collapsed", key="cap_story_fr")
 
+    # Reel variant (only for video media)
+    reel = result.get("reel", {})
+    if media.get("media_type") == "video" and reel:
+        reel_tab_es, reel_tab_en, reel_tab_fr = st.tabs(["Reel ES", "Reel EN", "Reel FR"])
+        with reel_tab_es:
+            st.text_area("reel_es", reel.get("es", ""), height=100, label_visibility="collapsed", key="cap_reel_es")
+        with reel_tab_en:
+            st.text_area("reel_en", reel.get("en", ""), height=100, label_visibility="collapsed", key="cap_reel_en")
+        with reel_tab_fr:
+            st.text_area("reel_fr", reel.get("fr", ""), height=100, label_visibility="collapsed", key="cap_reel_fr")
+
     # Hashtags
     hashtags = result.get("hashtags", [])
     if hashtags:

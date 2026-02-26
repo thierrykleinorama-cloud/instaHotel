@@ -8,7 +8,7 @@ from typing import Optional
 
 import anthropic
 
-from src.prompts.caption_generation import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
+from src.prompts.caption_generation import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE, VIDEO_INSTRUCTION
 
 # Available models for AI Lab
 AVAILABLE_MODELS = {
@@ -49,7 +49,9 @@ def compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 
 def build_prompt(media: dict, theme: str, season: str, cta_type: str) -> str:
     """Build the filled user prompt for display purposes."""
+    media_type = media.get("media_type", "image")
     return USER_PROMPT_TEMPLATE.format(
+        media_type=media_type,
         category=media.get("category", ""),
         subcategory=media.get("subcategory", ""),
         ambiance=", ".join(media.get("ambiance", [])) if isinstance(media.get("ambiance"), list) else media.get("ambiance", ""),
@@ -60,6 +62,7 @@ def build_prompt(media: dict, theme: str, season: str, cta_type: str) -> str:
         theme=theme,
         season=season,
         cta_type=cta_type,
+        video_instruction=VIDEO_INSTRUCTION if media_type == "video" else "",
     )
 
 

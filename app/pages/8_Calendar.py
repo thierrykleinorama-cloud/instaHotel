@@ -15,6 +15,7 @@ from datetime import date, timedelta
 
 from app.components.ui import sidebar_css, page_title
 from app.components.media_grid import _fetch_thumbnail_b64
+from app.components.ig_preview import render_ig_preview
 from src.services.editorial_queries import (
     fetch_all_rules,
     fetch_active_theme_for_date,
@@ -351,6 +352,7 @@ else:
         slot = entry.get("slot_index", 1)
         season = entry.get("season_context") or "—"
         media_id = entry.get("manual_media_id") or entry.get("media_id")
+        media = None
         has_content = entry["id"] in _content_map
 
         score_str = f"{score:.1f}" if score else "—"
@@ -414,6 +416,9 @@ else:
                         f"Cost: ${content.get('cost_usd', 0):.4f}"
                     )
 
+                # Detect video for reel variant
+                _is_video = media and media.get("media_type") == "video"
+
                 # Tabs for languages
                 tab_es, tab_en, tab_fr = st.tabs(["ES", "EN", "FR"])
 
@@ -426,6 +431,11 @@ else:
                         "Storytelling", content.get("caption_story_es", ""),
                         height=150, key=f"cap_story_es_{entry['id']}"
                     )
+                    if _is_video:
+                        new_reel_es = st.text_area(
+                            "Reel", content.get("caption_reel_es", ""),
+                            height=80, key=f"cap_reel_es_{entry['id']}"
+                        )
 
                 with tab_en:
                     new_short_en = st.text_area(
@@ -436,6 +446,11 @@ else:
                         "Storytelling", content.get("caption_story_en", ""),
                         height=150, key=f"cap_story_en_{entry['id']}"
                     )
+                    if _is_video:
+                        new_reel_en = st.text_area(
+                            "Reel", content.get("caption_reel_en", ""),
+                            height=80, key=f"cap_reel_en_{entry['id']}"
+                        )
 
                 with tab_fr:
                     new_short_fr = st.text_area(
@@ -446,6 +461,11 @@ else:
                         "Storytelling", content.get("caption_story_fr", ""),
                         height=150, key=f"cap_story_fr_{entry['id']}"
                     )
+                    if _is_video:
+                        new_reel_fr = st.text_area(
+                            "Reel", content.get("caption_reel_fr", ""),
+                            height=80, key=f"cap_reel_fr_{entry['id']}"
+                        )
 
                 # Hashtags
                 existing_hashtags = content.get("hashtags", [])
@@ -454,6 +474,64 @@ else:
                     "Hashtags", hashtag_str, height=60,
                     key=f"cap_hashtags_{entry['id']}"
                 )
+
+                # IG Preview
+                _preview_key = f"ig_preview_{entry['id']}"
+                st.checkbox("Show IG Preview", key=_preview_key, on_change=_pin_this)
+
+                if st.session_state.get(_preview_key):
+                    # Build variant options based on media type
+                    if _is_video:
+                        _pv_variants = ["Short", "Storytelling", "Reel", "Multilingual Short", "Multilingual Story", "Multilingual Reel"]
+                    else:
+                        _pv_variants = ["Short", "Storytelling", "Multilingual Short", "Multilingual Story"]
+
+                    _pv_c1, _pv_c2 = st.columns([1, 1])
+                    with _pv_c1:
+                        _pv_lang = st.selectbox("Language", ["ES", "EN", "FR"], key=f"ig_pv_lang_{entry['id']}", on_change=_pin_this)
+                    with _pv_c2:
+                        _pv_var = st.selectbox("Variant", _pv_variants, key=f"ig_pv_var_{entry['id']}", on_change=_pin_this)
+
+                    _pv_is_multilingual = _pv_var.startswith("Multilingual")
+                    _pv_is_reel = "Reel" in _pv_var
+
+                    if _pv_is_multilingual:
+                        # Determine base variant: short, story, or reel
+                        if "Short" in _pv_var:
+                            _pv_base = "short"
+                        elif "Story" in _pv_var:
+                            _pv_base = "story"
+                        else:
+                            _pv_base = "reel"
+                        _es = content.get(f"caption_{_pv_base}_es", "")
+                        _en = content.get(f"caption_{_pv_base}_en", "")
+                        _fr = content.get(f"caption_{_pv_base}_fr", "")
+                        _parts = [p for p in [_es, f"\U0001f1ec\U0001f1e7\n{_en}" if _en else "", f"\U0001f1eb\U0001f1f7\n{_fr}" if _fr else ""] if p]
+                        _pv_caption = "\n\n".join(_parts)
+                    else:
+                        # Single-language variant
+                        _var_key = {"Short": "short", "Storytelling": "story", "Reel": "reel"}.get(_pv_var, "short")
+                        _pv_field = f"caption_{_var_key}_{_pv_lang.lower()}"
+                        _pv_caption = content.get(_pv_field, "")
+
+                    _pv_tags = " ".join(f"#{h}" for h in (content.get("hashtags") or [])) if content.get("hashtags") else ""
+
+                    # Fetch image for preview
+                    _pv_img = None
+                    if media_id and media and media.get("drive_file_id"):
+                        try:
+                            _pv_img = _fetch_thumbnail_b64(media["drive_file_id"])
+                        except Exception:
+                            pass
+
+                    if _pv_img and _pv_caption:
+                        from streamlit.components.v1 import html as _st_html
+                        _pv_html, _pv_h = render_ig_preview(_pv_img, _pv_caption, _pv_tags, is_reel=_pv_is_reel)
+                        _st_html(_pv_html, height=_pv_h)
+                    elif not _pv_caption:
+                        st.caption("No caption text for this language/variant yet.")
+                    else:
+                        st.caption("No image available for preview.")
 
                 # Caption actions
                 cap_cols = st.columns(3)
@@ -471,6 +549,10 @@ else:
                             "hashtags": parsed_tags,
                             "content_status": "edited",
                         }
+                        if _is_video:
+                            updates["caption_reel_es"] = st.session_state.get(f"cap_reel_es_{entry['id']}", "")
+                            updates["caption_reel_en"] = st.session_state.get(f"cap_reel_en_{entry['id']}", "")
+                            updates["caption_reel_fr"] = st.session_state.get(f"cap_reel_fr_{entry['id']}", "")
                         if update_content(content["id"], updates):
                             st.success("Saved!")
                             st.rerun()
