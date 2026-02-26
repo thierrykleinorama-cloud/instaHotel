@@ -47,8 +47,8 @@ from src.services.caption_generator import AVAILABLE_MODELS, DEFAULT_MODEL
 
 # Sonnet model picker — short labels, default first
 _SONNET_OPTIONS = [
-    ("Sonnet 4.5", "claude-sonnet-4-5-20241022"),
     ("Sonnet 4.6", "claude-sonnet-4-6"),
+    ("Sonnet 4.5 (legacy)", "claude-sonnet-4-5-20241022"),
 ]
 
 # CTA options (same as AI Captions page)
