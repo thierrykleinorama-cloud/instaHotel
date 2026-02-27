@@ -69,29 +69,31 @@
 
 ### >>> PRIORITY 1: End-to-end flow (Calendar → Instagram) <<<
 
-### Phase 3b : IG Post Preview (Sem. 4)
+### Phase 3b : IG Post Preview (Sem. 4) — COMPLETE
 **Goal**: Visually validate posts before pushing to Instagram.
 
-- [ ] **Instagram Post Preview mockup**
-  - Show image + selected caption as it would appear on IG feed
-  - Phone frame mockup (profile pic, hotel name, image, caption, hashtags)
-  - Toggle between languages (ES/EN/FR) and variants (short/storytelling)
-  - New component: `app/components/ig_preview.py`
-  - Displayed inside calendar list view per slot
-  - "Ready to publish" confirmation after visual check
+- [x] Instagram Post Preview mockup via `app/components/ig_preview.py`
+- [x] Profile header, 4:5 image (or 9:16 Reel with play overlay), action icons, caption, hashtags
+- [x] Language (ES/EN/FR) + Variant selector (Short/Storytelling/Reel/Multilingual)
+- [x] Displayed inside calendar list view per slot
 
-### Phase 5a : Postiz Setup + Export to Instagram (Sem. 4)
+### Phase 5a : Direct Instagram Publishing via Graph API (Sem. 4) — COMPLETE
 **Goal**: Get validated posts actually published on Instagram.
 
-- [ ] **Postiz setup** (self-hosted or cloud)
-  - Connect Instagram Business account
-  - Test manual post creation via Postiz API
-- [ ] **Export pipeline**: calendar validated slots → Postiz
-  - Download image from Drive (or use enhanced version)
-  - Push image + caption (selected language) + hashtags + scheduled date
-  - "Publish" button per slot or batch export for a week
-  - Track published status back in calendar (status → published)
-- [ ] **New service**: `src/services/publisher.py` (Postiz API client)
+- [x] **Schema migration**: `schema_phase5a_publish.sql` — ig_post_id, ig_permalink, ig_container_id, scheduled_publish_time, published_at, publish_error columns
+- [x] **New service**: `src/services/publisher.py` — Instagram Graph API client + Supabase Storage upload
+  - Container creation (IMAGE/REELS), polling, publishing
+  - Scheduled publishing (future dates auto-queued by IG)
+  - Caption resolution (single language or multilingual stacked)
+  - `publish_slot()` orchestrator + `batch_publish_validated()`
+  - Supabase Storage temp upload (public bucket) for IG to fetch
+- [x] **Editorial queries**: `update_calendar_publish_info()`, `clear_publish_error()`
+- [x] **Calendar page**: real "Publish to IG" per-slot button + batch "Schedule All Validated"
+  - IG API token status indicator in sidebar
+  - Variant/language/multilingual selection for publishing
+  - Scheduled/published status display with IG permalink
+  - Publish error display + retry support
+- [x] **Prerequisites** (manual, user): Meta Developer App, FB↔IG link, long-lived token, `media-publish` Supabase Storage bucket
 
 ### Phase 5b : Full Automation (Sem. 5)
 **Goal**: Hands-off publishing pipeline.
@@ -134,9 +136,9 @@
 FLOW TO VALIDATE FIRST:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Media Library ──► Calendar ──► AI Captions ──► IG Preview ──► Postiz ──► Instagram
-      ✅              ✅            ✅           🔜 Phase 3b   🔜 Phase 5a    🎯
-                                                              🔜 Phase 5b
+  Media Library ──► Calendar ──► AI Captions ──► IG Preview ──► IG Graph API ──► Instagram
+      ✅              ✅            ✅              ✅            ✅ Phase 5a    🎯
+                                                                🔜 Phase 5b (automation)
 
 THEN ENRICH:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

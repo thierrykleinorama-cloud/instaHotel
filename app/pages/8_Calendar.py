@@ -11,7 +11,7 @@ if _root not in sys.path:
     sys.path.insert(0, _root)
 
 import streamlit as st
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from app.components.ui import sidebar_css, page_title
 from app.components.media_grid import _fetch_thumbnail_b64
@@ -24,6 +24,8 @@ from src.services.editorial_queries import (
     update_calendar_status,
     update_calendar_media,
     delete_calendar_range,
+    update_calendar_publish_info,
+    clear_publish_error,
 )
 from src.services.editorial_engine import (
     generate_calendar,
@@ -94,6 +96,7 @@ STATUS_COLORS = {
     "generated": "blue",
     "content_ready": "violet",
     "validated": "green",
+    "scheduled": "blue",
     "published": "violet",
     "skipped": "orange",
 }
@@ -143,8 +146,8 @@ with st.sidebar:
     st.divider()
     status_filter = st.multiselect(
         "Filter by Status",
-        ["planned", "generated", "content_ready", "validated", "published", "skipped"],
-        default=["generated", "content_ready", "validated", "planned"],
+        ["planned", "generated", "content_ready", "validated", "scheduled", "published", "skipped"],
+        default=["generated", "content_ready", "validated", "scheduled", "planned"],
         key="cal_status_filter",
     )
 
@@ -266,6 +269,101 @@ with st.sidebar:
         st.rerun()
 
 # -------------------------------------------------------
+# Sidebar — Instagram Publishing
+# -------------------------------------------------------
+with st.sidebar:
+    st.divider()
+    st.subheader("Instagram Publishing")
+
+    # Token status indicator
+    from src.services.publisher import _get_secret as _pub_secret
+    _ig_token_set = bool(_pub_secret("INSTAGRAM_ACCESS_TOKEN"))
+    _ig_acct_set = bool(_pub_secret("INSTAGRAM_ACCOUNT_ID"))
+
+    if _ig_token_set and _ig_acct_set:
+        st.markdown(":green[●] IG API connected")
+    else:
+        missing = []
+        if not _ig_token_set:
+            missing.append("INSTAGRAM_ACCESS_TOKEN")
+        if not _ig_acct_set:
+            missing.append("INSTAGRAM_ACCOUNT_ID")
+        st.markdown(f":red[●] Missing: {', '.join(missing)}")
+
+    # Publishing variant/language selection
+    _pub_lang = st.selectbox(
+        "Publish Language", ["ES", "EN", "FR"],
+        key="pub_lang",
+    )
+    _pub_variant = st.selectbox(
+        "Caption Variant", ["Short", "Storytelling", "Reel"],
+        key="pub_variant",
+    )
+    _pub_multilingual = st.checkbox(
+        "Multilingual (stacked ES+EN+FR)", value=True,
+        key="pub_multilingual",
+        help="If checked, all 3 languages are stacked in one post",
+    )
+
+    # Batch publish validated slots
+    _validated_entries = [
+        e for e in calendar_data
+        if e.get("status") == "validated"
+        and e["id"] in _content_map
+    ]
+
+    if _validated_entries:
+        st.caption(f"{len(_validated_entries)} validated slots ready to publish")
+    else:
+        st.caption("No validated slots to publish")
+
+    if st.button(
+        "Schedule All Validated",
+        type="primary",
+        use_container_width=True,
+        disabled=len(_validated_entries) == 0 or not (_ig_token_set and _ig_acct_set),
+        key="pub_batch",
+    ):
+        from src.services.publisher import publish_slot as _pub_slot
+        from src.services.media_queries import fetch_media_by_id as _fetch_media
+
+        _pub_progress = st.progress(0, text="Publishing...")
+        _pub_ok = 0
+        _pub_err = 0
+        _pub_total = len(_validated_entries)
+
+        for _pi, _pe in enumerate(_validated_entries):
+            try:
+                _pc = _content_map.get(_pe["id"])
+                _mid = _pe.get("manual_media_id") or _pe.get("media_id")
+                _pm = _fetch_media(_mid) if _mid else None
+                if _pc and _pm:
+                    _pr = _pub_slot(
+                        entry=_pe,
+                        content=_pc,
+                        media=_pm,
+                        variant=_pub_variant.lower(),
+                        language=_pub_lang.lower(),
+                        multilingual=_pub_multilingual,
+                    )
+                    if _pr.get("success"):
+                        _pub_ok += 1
+                    else:
+                        _pub_err += 1
+                        st.warning(f"{_pe['post_date']} S{_pe.get('slot_index', 1)}: {_pr.get('error', 'Unknown')}")
+                else:
+                    _pub_err += 1
+            except Exception as _ex:
+                _pub_err += 1
+                st.warning(f"{_pe['post_date']}: {_ex}")
+
+            _pub_progress.progress((_pi + 1) / _pub_total, text=f"Published {_pi + 1}/{_pub_total}...")
+
+        _pub_progress.empty()
+        st.success(f"Done: {_pub_ok} published/scheduled, {_pub_err} errors")
+        st.rerun()
+
+# -------------------------------------------------------
 # View toggle
 # -------------------------------------------------------
 view_mode = st.radio("View", ["Week Grid", "List"], horizontal=True, key="cal_view")
@@ -280,6 +378,7 @@ with st.expander("Status workflow & actions guide", expanded=False):
 | :blue[●] **generated** | AI captions have been generated (draft) |
 | :violet[●] **content_ready** | Captions linked and ready for review |
 | :green[●] **validated** | You reviewed and approved the post — ready to publish |
+| :blue[●] **scheduled** | Sent to Instagram with a future publish time — IG will auto-publish |
 | :violet[●] **published** | Post has been published on Instagram |
 | :orange[●] **skipped** | Slot intentionally skipped (holiday, no content, etc.) |
 
@@ -686,34 +785,106 @@ else:
                     st.caption("Assign media first to generate captions.")
 
             # -----------------------------------------------
+            # Publishing info (scheduled / published)
+            # -----------------------------------------------
+            if status in ("scheduled", "published"):
+                st.markdown("---")
+                _ig_id = entry.get("ig_post_id")
+                _ig_link = entry.get("ig_permalink")
+                _sched_t = entry.get("scheduled_publish_time")
+                _pub_at = entry.get("published_at")
+
+                if status == "scheduled":
+                    _sched_display = _sched_t[:16].replace("T", " ") if _sched_t else "unknown"
+                    st.info(f"Scheduled for {_sched_display}  \nIG Post ID: `{_ig_id}`")
+                elif status == "published":
+                    _pub_display = _pub_at[:16].replace("T", " ") if _pub_at else "—"
+                    if _ig_link:
+                        st.success(f"Published {_pub_display} — [{_ig_link}]({_ig_link})")
+                    else:
+                        st.success(f"Published {_pub_display}  \nIG Post ID: `{_ig_id}`")
+
+            # Show any publish error
+            _pub_error = entry.get("publish_error")
+            if _pub_error:
+                st.error(f"Last publish error: {_pub_error}")
+
+            # -----------------------------------------------
             # Status actions
             # -----------------------------------------------
             st.markdown("---")
-            action_cols = st.columns(5)
+            action_cols = st.columns(6)
 
             with action_cols[0]:
-                if st.button("Validate", key=f"val_{entry['id']}", type="primary", disabled=status == "validated", help="Mark slot as ready to publish"):
+                if st.button("Validate", key=f"val_{entry['id']}", type="primary", disabled=status in ("validated", "scheduled", "published"), help="Mark slot as ready to publish"):
                     update_calendar_status(entry["id"], "validated")
                     st.rerun()
 
             with action_cols[1]:
+                # Real Publish to IG button
+                _can_publish = (
+                    status == "validated"
+                    and has_content
+                    and media_id
+                    and _ig_token_set
+                    and _ig_acct_set
+                )
+                _pub_clicked = st.button(
+                    "Publish to IG",
+                    key=f"pub_ig_{entry['id']}",
+                    type="primary",
+                    disabled=not _can_publish,
+                    help="Publish or schedule this post on Instagram" if _can_publish else "Validate slot first + configure IG token",
+                )
+
+            with action_cols[2]:
                 if st.button("Skip", key=f"skip_{entry['id']}", disabled=status == "skipped", help="Intentionally skip this slot (holiday, no content, etc.)"):
                     update_calendar_status(entry["id"], "skipped")
                     st.rerun()
 
-            with action_cols[2]:
-                if st.button("Published", key=f"pub_{entry['id']}", disabled=status == "published", help="Mark as already published on Instagram"):
+            with action_cols[3]:
+                if st.button("Published", key=f"pub_{entry['id']}", disabled=status == "published", help="Mark as already published on Instagram (manual)"):
                     update_calendar_status(entry["id"], "published")
                     st.rerun()
 
-            with action_cols[3]:
-                if st.button("Reset", key=f"reset_{entry['id']}", disabled=status == "generated", help="Revert slot back to 'generated' status"):
+            with action_cols[4]:
+                if st.button("Reset", key=f"reset_{entry['id']}", disabled=status in ("generated", "planned"), help="Revert slot back to 'generated' status"):
                     update_calendar_status(entry["id"], "generated")
                     st.rerun()
 
             # Swap media — show top 5 alternatives
-            with action_cols[4]:
+            with action_cols[5]:
                 swap_clicked = st.button("Swap Media", key=f"swap_btn_{entry['id']}")
+
+            # Handle Publish to IG click
+            if _pub_clicked:
+                from src.services.publisher import publish_slot as _do_publish
+                from src.services.media_queries import fetch_media_by_id as _fetch_pub_media
+
+                with st.spinner("Publishing to Instagram..."):
+                    _pub_content = _content_map.get(entry["id"])
+                    _pub_media = _fetch_pub_media(media_id) if media_id else None
+                    if _pub_content and _pub_media:
+                        _pub_result = _do_publish(
+                            entry=entry,
+                            content=_pub_content,
+                            media=_pub_media,
+                            variant=st.session_state.get("pub_variant", "Short").lower(),
+                            language=st.session_state.get("pub_lang", "ES").lower(),
+                            multilingual=st.session_state.get("pub_multilingual", True),
+                        )
+                        if _pub_result.get("success"):
+                            _r_status = _pub_result.get("status", "published")
+                            if _r_status == "scheduled":
+                                st.success(f"Scheduled! IG Post ID: {_pub_result.get('ig_post_id')}")
+                            else:
+                                _link = _pub_result.get("ig_permalink", "")
+                                st.success(f"Published! {_link}")
+                            st.rerun()
+                        else:
+                            st.error(f"Publish failed: {_pub_result.get('error')}")
+                    else:
+                        st.error("Missing content or media for this slot.")
 
             if swap_clicked:
                 st.session_state[f"swap_open_{entry['id']}"] = True

@@ -233,6 +233,65 @@ def delete_calendar_range(start: date, end: date) -> bool:
 # Helpers
 # -----------------------------------------------------------
 
+def update_calendar_publish_info(
+    entry_id: str,
+    status: str,
+    ig_post_id: str = None,
+    ig_permalink: str = None,
+    ig_container_id: str = None,
+    scheduled_time: str = None,
+    published_at: str = None,
+) -> bool:
+    """Set publishing metadata after successful IG API call."""
+    client = get_supabase()
+    try:
+        updates = {"status": status}
+        if ig_post_id is not None:
+            updates["ig_post_id"] = ig_post_id
+        if ig_permalink is not None:
+            updates["ig_permalink"] = ig_permalink
+        if ig_container_id is not None:
+            updates["ig_container_id"] = ig_container_id
+        if scheduled_time is not None:
+            updates["scheduled_publish_time"] = scheduled_time
+        if published_at is not None:
+            updates["published_at"] = published_at
+        # Clear any previous error on success
+        updates["publish_error"] = None
+        client.table(TABLE_EDITORIAL_CALENDAR).update(updates).eq("id", entry_id).execute()
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Publish info update failed: {e}")
+        return False
+
+
+def update_calendar_publish_error(entry_id: str, error: str) -> bool:
+    """Store a publish error on a calendar entry."""
+    client = get_supabase()
+    try:
+        client.table(TABLE_EDITORIAL_CALENDAR).update(
+            {"publish_error": error}
+        ).eq("id", entry_id).execute()
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Publish error update failed: {e}")
+        return False
+
+
+def clear_publish_error(entry_id: str) -> bool:
+    """Clear publish_error when retrying."""
+    client = get_supabase()
+    try:
+        client.table(TABLE_EDITORIAL_CALENDAR).update(
+            {"publish_error": None}
+        ).eq("id", entry_id).execute()
+        return True
+    except Exception:
+        return False
+
+
 def fetch_recent_media_ids(lookback_days: int = 7) -> set[str]:
     """Get media IDs used in the calendar within the last N days."""
     client = get_supabase()
