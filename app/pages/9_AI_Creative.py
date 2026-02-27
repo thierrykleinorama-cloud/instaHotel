@@ -76,14 +76,43 @@ except Exception as e:
     st.error(f"Could not download image: {e}")
     st.stop()
 
-# Preview
+# Preview + full metadata
 col_preview, col_info = st.columns([1, 2])
 with col_preview:
     st.image(image_bytes, width=300)
 with col_info:
     st.markdown(f"**{media.get('file_name', '')}**")
-    st.caption(f"Category: {media.get('category')} | Quality: {media.get('ig_quality')}")
-    st.text(media.get("description_en", ""))
+
+    # Core tags
+    _cat = media.get("category", "—")
+    _subcat = media.get("subcategory", "—")
+    _quality = media.get("ig_quality", "—")
+    st.markdown(f"**Category:** {_cat} / {_subcat}  \n**Quality:** {_quality}/10")
+
+    # Ambiance & season
+    _ambiance = media.get("ambiance", [])
+    _season = media.get("season", [])
+    _amb_str = ", ".join(_ambiance) if isinstance(_ambiance, list) else str(_ambiance or "—")
+    _sea_str = ", ".join(_season) if isinstance(_season, list) else str(_season or "—")
+    st.markdown(f"**Ambiance:** {_amb_str}  \n**Season:** {_sea_str}")
+
+    # Elements
+    _elements = media.get("elements", [])
+    if _elements:
+        st.markdown(f"**Elements:** {', '.join(_elements)}")
+
+    # Descriptions
+    _desc_fr = media.get("description_fr", "")
+    _desc_en = media.get("description_en", "")
+    if _desc_fr:
+        st.caption(f"FR: {_desc_fr}")
+    if _desc_en:
+        st.caption(f"EN: {_desc_en}")
+
+    # Manual notes
+    _notes = media.get("manual_notes")
+    if _notes:
+        st.caption(f"Notes: {_notes}")
 
 st.divider()
 
@@ -97,6 +126,11 @@ tab_video, tab_scenarios = st.tabs(["Photo-to-Video", "Creative Scenarios"])
 # -------------------------------------------------------
 with tab_video:
     st.markdown("### Generate Video from Photo")
+    st.caption(
+        "The video model (Kling) takes your photo + a text prompt describing "
+        "**what should move and how the camera behaves**. Duration and aspect ratio "
+        "are set separately in the sidebar."
+    )
 
     with st.sidebar:
         st.divider()
@@ -112,44 +146,85 @@ with tab_video:
         duration = st.select_slider("Duration (sec)", [5, 10], value=5, key="cs_dur")
         aspect_ratio = st.selectbox("Aspect Ratio", ["9:16", "16:9", "1:1"], key="cs_ar")
 
-        use_ai_prompt = st.checkbox("Generate prompt with AI", value=False, key="cs_ai_prompt",
-                                    help="Use Claude to write a cinematic motion prompt from the photo")
-
         model_info = VIDEO_MODELS[video_model]
         cost = model_info["cost_5s"] if duration <= 5 else model_info["cost_10s"]
         st.caption(f"Estimated cost: ${cost:.2f}")
 
-    # Auto-generate motion prompt from metadata
+    # --- Prompt source selector ---
+    st.markdown("**How to create the motion prompt:**")
+    prompt_method = st.radio(
+        "Prompt source",
+        [
+            "Auto (from metadata — basic)",
+            "AI-generated (Claude writes a cinematic prompt — recommended)",
+            "From scenario (use Creative Scenarios tab first)",
+            "Manual (write your own)",
+        ],
+        key="cs_prompt_method",
+        label_visibility="collapsed",
+    )
+
     auto_prompt = build_motion_prompt(media)
 
-    # AI prompt generation
-    if use_ai_prompt:
-        if st.button("Generate AI Prompt", key="cs_gen_prompt"):
-            with st.spinner("Claude is writing a motion prompt..."):
+    if prompt_method.startswith("AI-generated"):
+        st.info(
+            "Claude will analyze the photo + its metadata (ambiance, elements, category) "
+            "and write a cinematic motion prompt optimized for the video model. Cost: ~$0.01"
+        )
+        if st.button("Generate AI Prompt", type="primary", key="cs_gen_prompt"):
+            with st.spinner("Claude is writing a cinematic motion prompt..."):
                 try:
                     b64 = encode_image_bytes(image_bytes)
                     ai_result = generate_motion_prompt_ai(media, image_base64=b64)
                     st.session_state["cs_motion_prompt"] = ai_result["prompt"]
                     usage = ai_result["_usage"]
-                    st.caption(f"Prompt cost: ${usage['cost_usd']:.4f}")
+                    st.success(f"AI prompt generated! (${usage['cost_usd']:.4f})")
                 except Exception as e:
                     st.error(f"AI prompt generation failed: {e}")
+        default_prompt = st.session_state.get("cs_motion_prompt", auto_prompt)
 
-    # Editable prompt
-    default_prompt = st.session_state.get("cs_motion_prompt", auto_prompt)
+    elif prompt_method.startswith("From scenario"):
+        scenario_prompt = st.session_state.get("cs_motion_prompt")
+        if scenario_prompt and scenario_prompt != auto_prompt:
+            default_prompt = scenario_prompt
+            st.success("Using scenario prompt loaded from Creative Scenarios tab.")
+        else:
+            st.warning("No scenario loaded yet. Go to the **Creative Scenarios** tab, generate ideas, and click 'Use this prompt'.")
+            default_prompt = auto_prompt
+
+    elif prompt_method.startswith("Manual"):
+        default_prompt = st.session_state.get("cs_motion_prompt", "")
+        if not default_prompt:
+            st.info(
+                "Describe what should happen: camera movement (pan, dolly, crane, orbit), "
+                "what animates (water, curtains, light, people), and the mood. "
+                "Example: *Slow dolly forward into the room, curtains sway gently in the breeze, "
+                "warm golden light shifts across the bed linens.*"
+            )
+    else:
+        # Auto
+        default_prompt = auto_prompt
+        st.caption(
+            f"Auto-generated from metadata: ambiance ({', '.join(media.get('ambiance', []) or ['—'])}) "
+            f"+ category ({media.get('category', '—')}). Edit below to improve."
+        )
+
+    # Editable prompt (always shown — user can tweak any source)
     motion_prompt = st.text_area(
-        "Motion Prompt",
+        "Motion Prompt (editable)",
         value=default_prompt,
         height=120,
         key="cs_prompt_edit",
-        help="Describe the camera movement and animation. Auto-filled from metadata.",
+        help="This is sent to the video model. Describe camera movement + animation, NOT the static image.",
     )
 
-    neg_prompt = st.text_input(
-        "Negative prompt",
-        value="blurry, distorted, low quality, text overlay, watermark",
-        key="cs_neg",
-    )
+    with st.expander("Negative prompt (technical — usually no need to change)"):
+        neg_prompt = st.text_input(
+            "Negative prompt",
+            value="blurry, distorted, low quality, text overlay, watermark",
+            key="cs_neg",
+            help="Tells the model what to avoid. Standard defaults work well.",
+        )
 
     # Generate video
     if st.button("Generate Video", type="primary", key="cs_gen_video"):
