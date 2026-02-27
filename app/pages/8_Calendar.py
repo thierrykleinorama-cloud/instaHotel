@@ -147,7 +147,7 @@ with st.sidebar:
     status_filter = st.multiselect(
         "Filter by Status",
         ["planned", "generated", "content_ready", "validated", "scheduled", "published", "skipped"],
-        default=["generated", "content_ready", "validated", "scheduled", "planned"],
+        default=["generated", "content_ready", "validated", "scheduled", "published", "planned"],
         key="cal_status_filter",
     )
 
