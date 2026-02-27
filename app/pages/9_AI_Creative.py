@@ -168,14 +168,52 @@ with tab_video:
 
     if prompt_method.startswith("AI-generated"):
         st.info(
-            "Claude will analyze the photo + its metadata (ambiance, elements, category) "
-            "and write a cinematic motion prompt optimized for the video model. Cost: ~$0.01"
+            "Claude analyzes the photo + metadata and writes a cinematic motion prompt "
+            "tailored to the duration and format. You can add a creative brief to guide the style."
         )
+        ai_brief = st.text_input(
+            "Creative brief (optional)",
+            placeholder="e.g., 'dreamy morning light', 'dramatic reveal', 'cats walking through the scene'",
+            key="cs_ai_brief",
+            help="Guide Claude's creative direction. Leave empty for full creative freedom.",
+        )
+        ai_include_photo = st.checkbox(
+            "Include photo in prompt",
+            value=True,
+            key="cs_ai_inc_photo",
+            help="Send the actual image to Claude for a richer, more accurate prompt (~$0.01 more)",
+        )
+        # Show what will be sent to Claude
+        with st.expander("View prompt sent to Claude"):
+            from src.prompts.creative_transform import MOTION_PROMPT_SYSTEM, MOTION_PROMPT_TEMPLATE
+            _preview_user = MOTION_PROMPT_TEMPLATE.format(
+                category=media.get("category", ""),
+                subcategory=media.get("subcategory", ""),
+                ambiance=", ".join(media.get("ambiance", [])) if isinstance(media.get("ambiance"), list) else media.get("ambiance", ""),
+                elements=", ".join(media.get("elements", [])) if isinstance(media.get("elements"), list) else media.get("elements", ""),
+                description_en=media.get("description_en", ""),
+                duration=duration,
+                aspect_ratio=aspect_ratio,
+                creative_brief=ai_brief or "Liberté créative — propose le mouvement le plus cinématique pour cette photo",
+            )
+            st.markdown("**System prompt:**")
+            st.code(MOTION_PROMPT_SYSTEM, language=None)
+            st.markdown("**User prompt:**")
+            st.code(_preview_user, language=None)
+            if ai_include_photo:
+                st.caption("+ the photo will be attached as an image")
+
         if st.button("Generate AI Prompt", type="primary", key="cs_gen_prompt"):
             with st.spinner("Claude is writing a cinematic motion prompt..."):
                 try:
-                    b64 = encode_image_bytes(image_bytes)
-                    ai_result = generate_motion_prompt_ai(media, image_base64=b64)
+                    b64 = encode_image_bytes(image_bytes) if ai_include_photo else None
+                    ai_result = generate_motion_prompt_ai(
+                        media,
+                        creative_brief=ai_brief,
+                        image_base64=b64,
+                        duration=duration,
+                        aspect_ratio=aspect_ratio,
+                    )
                     st.session_state["cs_motion_prompt"] = ai_result["prompt"]
                     usage = ai_result["_usage"]
                     st.success(f"AI prompt generated! (${usage['cost_usd']:.4f})")

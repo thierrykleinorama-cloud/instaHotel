@@ -101,6 +101,8 @@ def generate_motion_prompt_ai(
     media: dict,
     creative_brief: str = "",
     image_base64: Optional[str] = None,
+    duration: int = 5,
+    aspect_ratio: str = "9:16",
     model: str = "claude-sonnet-4-6",
 ) -> dict:
     """Use Claude to generate a cinematic motion prompt from media metadata + optional image.
@@ -115,7 +117,9 @@ def generate_motion_prompt_ai(
         ambiance=", ".join(media.get("ambiance", [])) if isinstance(media.get("ambiance"), list) else media.get("ambiance", ""),
         elements=", ".join(media.get("elements", [])) if isinstance(media.get("elements"), list) else media.get("elements", ""),
         description_en=media.get("description_en", ""),
-        creative_brief=creative_brief or "Aucun brief spécifique",
+        duration=duration,
+        aspect_ratio=aspect_ratio,
+        creative_brief=creative_brief or "Liberté créative — propose le mouvement le plus cinématique pour cette photo",
     )
 
     content = []

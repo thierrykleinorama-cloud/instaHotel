@@ -10,6 +10,9 @@ MOTION_PROMPT_SYSTEM = """Tu es un directeur artistique spécialisé en vidéo p
 Tu transformes une description de photo d'hôtel en un prompt de mouvement cinématique
 pour un modèle IA de génération vidéo (Kling, Veo, etc.).
 
+L'hôtel est le Noucentista, un boutique Art Nouveau à Sitges (Barcelone).
+Ambiance méditerranéenne, chaleureuse. Des chats vivent à l'hôtel.
+
 Réponds UNIQUEMENT avec le prompt en anglais (pas de JSON, pas de markdown).
 Le prompt doit décrire le mouvement de caméra et l'animation des éléments, PAS décrire l'image statique.
 Maximum 150 mots."""
@@ -23,13 +26,18 @@ Photo :
 - Éléments visibles : {elements}
 - Description : {description_en}
 
-Contexte créatif (optionnel) : {creative_brief}
+Paramètres vidéo :
+- Durée : {duration} secondes
+- Format : {aspect_ratio}
+
+Contexte créatif : {creative_brief}
 
 Le prompt doit :
-1. Décrire un mouvement de caméra (slow pan, dolly in, crane up, etc.)
+1. Décrire un mouvement de caméra adapté à {duration}s (slow pan, dolly in, crane up, orbit, etc.)
 2. Animer les éléments naturels (eau qui scintille, rideaux qui bougent, lumière qui change)
-3. Créer une ambiance cinématique en 5 secondes
-4. Être en anglais, optimisé pour Kling v2.1 / Veo 3"""
+3. Créer une ambiance cinématique cohérente sur {duration} secondes
+4. Être en anglais, optimisé pour Kling v2.1 / Veo 3
+5. Si le brief créatif mentionne un scénario, l'intégrer dans le mouvement"""
 
 
 # ---------------------------------------------------------------------------
