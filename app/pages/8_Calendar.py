@@ -46,6 +46,7 @@ from src.services.content_generator import (
     estimate_batch_cost,
 )
 from src.services.caption_generator import AVAILABLE_MODELS, DEFAULT_MODEL
+from src.prompts.tone_variants import TONE_LABELS, TONE_LABELS_REVERSE
 
 # Sonnet model picker — short labels, default first
 _SONNET_OPTIONS = [
@@ -191,6 +192,11 @@ with st.sidebar:
     )
     batch_cta = _CTA_OPTIONS.get(batch_cta_label)  # None if "Auto (from theme)"
 
+    batch_tone_label = st.selectbox(
+        "Tone", list(TONE_LABELS.values()), key="cal_batch_tone",
+    )
+    batch_tone = TONE_LABELS_REVERSE[batch_tone_label]
+
     batch_include_image = st.checkbox(
         "Include images in prompt",
         value=False,
@@ -255,6 +261,7 @@ with st.sidebar:
                     include_image=batch_include_image,
                     image_base64=image_b64,
                     cta_override=batch_cta,
+                    tone=batch_tone,
                 )
                 if result:
                     success_count += 1
@@ -703,18 +710,21 @@ else:
                     def _pin_regen(eid=entry["id"]):
                         st.session_state["cal_expanded_id"] = eid
 
-                    _rc1, _rc2, _rc3, _rc4 = st.columns([1, 1, 1, 1])
+                    _rc1, _rc2, _rc3, _rc4, _rc5 = st.columns([1, 1, 1, 1, 1])
                     with _rc1:
                         regen_model_label = st.selectbox("Model", [l for l, _ in _SONNET_OPTIONS], key=f"cap_regen_model_{entry['id']}", on_change=_pin_regen)
                     with _rc2:
                         regen_cta_label = st.selectbox("CTA", _CTA_LABELS, key=f"cap_regen_cta_{entry['id']}", on_change=_pin_regen)
                     with _rc3:
-                        regen_img = st.selectbox("Image in prompt", ["No", "Yes"], key=f"cap_regen_img_{entry['id']}", on_change=_pin_regen)
+                        regen_tone_label = st.selectbox("Tone", list(TONE_LABELS.values()), key=f"cap_regen_tone_{entry['id']}", on_change=_pin_regen)
                     with _rc4:
+                        regen_img = st.selectbox("Image in prompt", ["No", "Yes"], key=f"cap_regen_img_{entry['id']}", on_change=_pin_regen)
+                    with _rc5:
                         st.markdown("<div style='height: 24px'></div>", unsafe_allow_html=True)
                         _regen_go = st.button("Confirm Regenerate", key=f"cap_regen_go_{entry['id']}", type="primary", use_container_width=True)
                     regen_model = dict(_SONNET_OPTIONS)[regen_model_label]
                     regen_cta = _CTA_OPTIONS[regen_cta_label]
+                    regen_tone = TONE_LABELS_REVERSE[regen_tone_label]
                     regen_include = regen_img == "Yes"
                     from src.services.caption_generator import compute_cost as _cc
                     _rest = _cc(regen_model, 2000 if regen_include else 800, 600)
@@ -730,7 +740,7 @@ else:
                                     _m = _fetch(media_id)
                                     if _m and _m.get("drive_file_id"):
                                         image_b64 = encode_image_bytes(download_file_bytes(_m["drive_file_id"]))
-                                result = generate_for_slot(entry=entry, model=regen_model, include_image=regen_include, image_base64=image_b64, cta_override=regen_cta)
+                                result = generate_for_slot(entry=entry, model=regen_model, include_image=regen_include, image_base64=image_b64, cta_override=regen_cta, tone=regen_tone)
                                 if result:
                                     st.session_state[f"regen_open_{entry['id']}"] = False
                                     st.success("New captions generated!")
@@ -746,18 +756,21 @@ else:
                     def _pin_expander(eid=entry["id"]):
                         st.session_state["cal_expanded_id"] = eid
 
-                    _gc1, _gc2, _gc3, _gc4 = st.columns([1, 1, 1, 1])
+                    _gc1, _gc2, _gc3, _gc4, _gc5 = st.columns([1, 1, 1, 1, 1])
                     with _gc1:
                         slot_model_label = st.selectbox("Model", [l for l, _ in _SONNET_OPTIONS], key=f"cap_model_{entry['id']}", on_change=_pin_expander)
                     with _gc2:
                         slot_cta_label = st.selectbox("CTA", _CTA_LABELS, key=f"cap_cta_{entry['id']}", on_change=_pin_expander)
                     with _gc3:
-                        slot_img_sel = st.selectbox("Image in prompt", ["No", "Yes"], key=f"cap_img_{entry['id']}", on_change=_pin_expander)
+                        slot_tone_label = st.selectbox("Tone", list(TONE_LABELS.values()), key=f"cap_tone_{entry['id']}", on_change=_pin_expander)
                     with _gc4:
+                        slot_img_sel = st.selectbox("Image in prompt", ["No", "Yes"], key=f"cap_img_{entry['id']}", on_change=_pin_expander)
+                    with _gc5:
                         st.markdown("<div style='height: 24px'></div>", unsafe_allow_html=True)
                         _gen_clicked = st.button("Generate Captions", key=f"cap_gen_{entry['id']}", type="primary", use_container_width=True, on_click=_pin_expander)
                     slot_model = dict(_SONNET_OPTIONS)[slot_model_label]
                     slot_cta = _CTA_OPTIONS[slot_cta_label]
+                    slot_tone = TONE_LABELS_REVERSE[slot_tone_label]
                     inc_img = slot_img_sel == "Yes"
                     from src.services.caption_generator import compute_cost
                     _est = compute_cost(slot_model, 2000 if inc_img else 800, 600)
@@ -773,7 +786,7 @@ else:
                                     _m = _fetch(media_id)
                                     if _m and _m.get("drive_file_id"):
                                         image_b64 = encode_image_bytes(download_file_bytes(_m["drive_file_id"]))
-                                result = generate_for_slot(entry=entry, model=slot_model, include_image=inc_img, image_base64=image_b64, cta_override=slot_cta)
+                                result = generate_for_slot(entry=entry, model=slot_model, include_image=inc_img, image_base64=image_b64, cta_override=slot_cta, tone=slot_tone)
                                 if result:
                                     st.success("Captions generated!")
                                     st.rerun()

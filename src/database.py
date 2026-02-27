@@ -24,6 +24,7 @@ TABLE_EDITORIAL_RULES = "editorial_rules"
 TABLE_SEASONAL_THEMES = "seasonal_themes"
 TABLE_EDITORIAL_CALENDAR = "editorial_calendar"
 TABLE_GENERATED_CONTENT = "generated_content"
+TABLE_CREATIVE_JOBS = "creative_jobs"
 
 
 def _get_secret(key: str) -> Optional[str]:

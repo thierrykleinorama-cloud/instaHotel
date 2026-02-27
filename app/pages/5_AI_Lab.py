@@ -42,11 +42,12 @@ with p2:
     st.markdown("**Step 2: Creative Transform**")
     st.caption("Multiply library — new entries")
     st.markdown(
+        ":green[&check;] Photo-to-video (Kling)\n\n"
+        ":green[&check;] Creative scenarios\n\n"
+        ":green[&check;] Background music\n\n"
         ":orange[&rarr;] Seasonal variants\n\n"
         ":orange[&rarr;] Add elements\n\n"
-        ":orange[&rarr;] Photo-to-video\n\n"
-        ":orange[&rarr;] Avatar presenter\n\n"
-        ":orange[&rarr;] AI Humor scenarios"
+        ":orange[&rarr;] Avatar presenter"
     )
 
 with p3:
@@ -63,7 +64,7 @@ with p4:
     st.caption("Captions + post packaging")
     st.markdown(
         ":green[&check;] AI Captions\n\n"
-        ":orange[&rarr;] Tone variants\n\n"
+        ":green[&check;] Tone variants\n\n"
         ":orange[&rarr;] AI Humor\n\n"
         ":orange[&rarr;] Carousel"
     )
@@ -79,8 +80,8 @@ with col_cap:
 
 Generate Instagram captions in **ES / EN / FR** with hashtags.
 Choose from multiple AI models, control editorial context
-(theme, season, CTA), and optionally include the image
-for richer results.
+(theme, season, CTA), **tone variants** (luxe, casual, humorous, romantic),
+and optionally include the image for richer results.
 """)
     st.page_link("pages/6_AI_Captions.py", label="Open Captions", icon=":material/edit_note:")
 
@@ -93,3 +94,27 @@ for better quality. Compare before/after with Claude Vision
 re-analysis and download enhanced images.
 """)
     st.page_link("pages/7_AI_Enhancement.py", label="Open Enhancement", icon=":material/auto_awesome:")
+
+st.divider()
+
+col_creative, col_music = st.columns(2)
+
+with col_creative:
+    st.markdown("""
+### Creative Studio
+
+**Photo-to-video** (Kling v2.1), **creative scenario generation**
+with Claude, and AI-directed storytelling. Turn hotel photos
+into engaging Reels with cinematic motion prompts.
+""")
+    st.page_link("pages/9_AI_Creative.py", label="Open Creative Studio", icon=":material/movie_creation:")
+
+with col_music:
+    st.markdown("""
+### AI Music
+
+Generate **background music** for Reels with MusicGen.
+Choose from style presets or describe your own mood.
+**Composite** video + audio into a final MP4 with FFmpeg.
+""")
+    st.page_link("pages/10_AI_Music.py", label="Open AI Music", icon=":material/music_note:")

@@ -74,6 +74,20 @@ def delete_media(media_id: str) -> bool:
         return False
 
 
+@st.cache_data(ttl=60)
+def fetch_derivatives(parent_id: str) -> list[dict]:
+    """Fetch all derivative media (children) of a given parent media ID."""
+    client = get_supabase()
+    result = (
+        client.table(TABLE_MEDIA_LIBRARY)
+        .select("*")
+        .eq("parent_media_id", parent_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return result.data
+
+
 @st.cache_data(ttl=300)
 def fetch_distinct_values(field: str) -> list[str]:
     """Fetch distinct non-null values for a field. Cached 5 min."""

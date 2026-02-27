@@ -9,6 +9,7 @@ from typing import Optional
 import anthropic
 
 from src.prompts.caption_generation import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE, VIDEO_INSTRUCTION
+from src.prompts.tone_variants import get_tone_instruction, get_tone_system_addendum
 
 # Available models for AI Lab
 AVAILABLE_MODELS = {
@@ -47,7 +48,7 @@ def compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     return (input_tokens * info["input_per_mtok"] + output_tokens * info["output_per_mtok"]) / 1_000_000
 
 
-def build_prompt(media: dict, theme: str, season: str, cta_type: str) -> str:
+def build_prompt(media: dict, theme: str, season: str, cta_type: str, tone: str = "default") -> str:
     """Build the filled user prompt for display purposes."""
     media_type = media.get("media_type", "image")
     return USER_PROMPT_TEMPLATE.format(
@@ -62,6 +63,7 @@ def build_prompt(media: dict, theme: str, season: str, cta_type: str) -> str:
         theme=theme,
         season=season,
         cta_type=cta_type,
+        tone_instruction=get_tone_instruction(tone),
         video_instruction=VIDEO_INSTRUCTION if media_type == "video" else "",
     )
 
@@ -76,6 +78,7 @@ def generate_captions(
     model: str = DEFAULT_MODEL,
     system_prompt: Optional[str] = None,
     user_prompt: Optional[str] = None,
+    tone: str = "default",
 ) -> dict:
     """
     Generate Instagram captions via Claude API.
@@ -85,8 +88,13 @@ def generate_captions(
     """
     client = _get_client()
 
-    prompt_text = user_prompt if user_prompt is not None else build_prompt(media, theme, season, cta_type)
+    prompt_text = user_prompt if user_prompt is not None else build_prompt(media, theme, season, cta_type, tone=tone)
+
+    # Build system prompt with tone addendum
     sys_prompt = system_prompt if system_prompt is not None else SYSTEM_PROMPT
+    tone_addendum = get_tone_system_addendum(tone)
+    if tone_addendum and system_prompt is None:
+        sys_prompt = sys_prompt + "\n\n" + tone_addendum
 
     content = []
     if include_image and image_base64:

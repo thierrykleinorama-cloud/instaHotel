@@ -109,11 +109,12 @@
 
 ### >>> PRIORITY 2: Enrich content quality & variety <<<
 
-### Phase 3c : Tone Variants (Sem. 6)
-- [ ] Generate alternative caption tones: luxe, casual, humorous, romantic
-- [ ] Store as additional `generated_content` candidates (same calendar_id)
-- [ ] User picks best candidate → link to calendar
-- [ ] New prompt templates in `src/prompts/tone_variants.py`
+### Phase 3c : Tone Variants (Sem. 6) — COMPLETE
+- [x] 5 tones: default, luxe, casual, humorous, romantic — `src/prompts/tone_variants.py`
+- [x] Tone injected into prompt + system addendum in `caption_generator.py`
+- [x] Tone selector in AI Captions page sidebar
+- [x] Tone selector in Calendar: batch gen + per-slot gen + per-slot regen
+- [x] Stored in `generation_params.tone` JSONB via `content_generator.py`
 
 ### Phase 2.5B : Batch Enhancement (Sem. 6)
 - [ ] Batch uplift ~94 low-quality media (ig_quality < 5)
@@ -122,11 +123,20 @@
 - [ ] Upload enhanced versions to Google Drive subfolder
 - [ ] Auto-retarget: outpaint photos to 4:5 (feed) and 9:16 (story/reel)
 
-### Phase 2.5C : Creative Transforms (Sem. 7)
+### Phase 2.5C : Creative Transforms (Sem. 7) — PARTIAL
+- [x] **DB Migration**: `schema_phase3c_25c.sql` — parent_media_id, generation_method, creative_jobs table
+- [x] **Photo-to-Video (Kling v2.1)** — `src/services/creative_transform.py` via Replicate
+- [x] **Creative Scenarios** — Claude-generated video concepts from photos + hotel context
+- [x] **Motion Prompt Generator** — auto from metadata + AI-enhanced with Claude Vision
+- [x] **Music Generation (MusicGen)** — `src/services/music_generator.py` via Replicate
+- [x] **Video + Audio Composite** — `src/services/video_composer.py` via FFmpeg
+- [x] **AI Creative Studio page** — `app/pages/9_AI_Creative.py` (photo-to-video + scenarios)
+- [x] **AI Music page** — `app/pages/10_AI_Music.py` (music gen + video composite)
+- [x] **AI Lab hub updated** — new Creative Studio + AI Music cards
 - [ ] **Seasonal & Element Variants** — summer → winter, add elements, object removal
-- [ ] **Photo-to-Video (AI Reels)** — Runway/Kling/Veo 3, avatar presenter, ambient audio
-- [ ] **AI Humor** — creative/funny scenarios from hotel context
+- [ ] **AI Humor** — dedicated humor scenario mode
 - [ ] **Carousel** — group related media into multi-image posts
+- [ ] **Veo 3 integration** — add as second video model option (Google AI Studio API)
 
 ---
 
@@ -144,9 +154,10 @@ THEN ENRICH:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Step 1: PREPROCESS          Step 2: CREATIVE TRANSFORM     Step 3: RETARGET        Step 4: CONTENT ASSEMBLY
-✅ AI Retouch               🔜 Seasonal variants           ✅ Outpaint              ✅ AI Captions + CTA
-✅ Upscale                  🔜 Add elements                 🔜 Story/Reel crop      ✅ IG Post Preview (3b)
-🔜 Batch enhance (2.5B)     🔜 Photo-to-video              🔜 Platform adapt        🔜 Tone variants (3c)
-🔜 Object removal           🔜 Avatar presenter                                     🔜 AI Humor
-                            🔜 AI Humor scenarios                                   🔜 Carousel
+✅ AI Retouch               ✅ Photo-to-video (Kling)      ✅ Outpaint              ✅ AI Captions + CTA
+✅ Upscale                  ✅ Creative scenarios (Claude)  🔜 Story/Reel crop      ✅ IG Post Preview (3b)
+🔜 Batch enhance (2.5B)    ✅ Background music (MusicGen)  🔜 Platform adapt       ✅ Tone variants (3c)
+🔜 Object removal          ✅ Video+Audio composite                                🔜 AI Humor
+                            🔜 Seasonal variants                                    🔜 Carousel
+                            🔜 Veo 3 / Sora 2
 ```

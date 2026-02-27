@@ -49,5 +49,5 @@ Génère un JSON avec cette structure exacte :
 }}
 
 Inclus un CTA naturel ({cta_type}) dans chaque légende.
-Ton : chaleureux, authentique, jamais corporate.
+{tone_instruction}
 {video_instruction}"""

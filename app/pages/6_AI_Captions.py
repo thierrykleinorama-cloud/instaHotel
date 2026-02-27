@@ -20,6 +20,7 @@ from src.services.caption_generator import (
     DEFAULT_MODEL,
 )
 from src.prompts.caption_generation import SYSTEM_PROMPT
+from src.prompts.tone_variants import TONES, TONE_LABELS, TONE_LABELS_REVERSE
 from src.utils import encode_image_bytes
 
 
@@ -75,6 +76,19 @@ with st.sidebar:
     )
     cta_type = CTA_OPTIONS[cta_label]
 
+    st.divider()
+    st.subheader("Tone")
+    tone_label = st.selectbox(
+        "Caption Tone",
+        list(TONE_LABELS.values()),
+        key="cap_tone",
+        help="Changes the writing style of generated captions",
+    )
+    tone_key = TONE_LABELS_REVERSE[tone_label]
+    tone_info = TONES[tone_key]
+    st.caption(tone_info["description"])
+
+    st.divider()
     include_image = st.checkbox(
         "Include image in prompt",
         value=False,
@@ -100,7 +114,7 @@ st.caption(
 selected_model = model_labels[selected_model_label]
 
 # --- Editable prompts ---
-filled_prompt = build_prompt(media, theme, season, cta_type)
+filled_prompt = build_prompt(media, theme, season, cta_type, tone=tone_key)
 
 system_prompt = st.text_area(
     "System prompt",
@@ -144,6 +158,7 @@ if generate_clicked or regenerate_clicked:
                 model=selected_model,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
+                tone=tone_key,
             )
             st.session_state["cap_result"] = result
         except Exception as e:
