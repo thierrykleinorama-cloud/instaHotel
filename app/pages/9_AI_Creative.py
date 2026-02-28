@@ -38,6 +38,10 @@ page_title("Creative Studio", "Generate videos, scenarios & seasonal variants")
 st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
 
 # --- Media selector (images only — source for creative transforms) ---
+# Restore media_id from URL params (survives page reload/crash)
+_qp = st.query_params
+_saved_media_id = _qp.get("media_id")
+
 with st.sidebar:
     st.subheader("Select Source Photo")
 
@@ -63,8 +67,19 @@ with st.sidebar:
         st.warning("No images match filters.")
         st.stop()
 
-    selected_name = st.selectbox("Select", list(media_options.keys()), key="cs_select")
+    # Restore previous selection from URL if it's still in the filtered list
+    _names = list(media_options.keys())
+    _default_idx = 0
+    if _saved_media_id:
+        _id_to_name = {v: k for k, v in media_options.items()}
+        if _saved_media_id in _id_to_name:
+            _default_idx = _names.index(_id_to_name[_saved_media_id])
+
+    selected_name = st.selectbox("Select", _names, index=_default_idx, key="cs_select")
     media_id = media_options[selected_name]
+
+    # Persist selection in URL
+    st.query_params["media_id"] = media_id
 
 media = fetch_media_by_id(media_id)
 if not media or not media.get("drive_file_id"):
