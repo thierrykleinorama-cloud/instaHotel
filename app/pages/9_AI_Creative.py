@@ -250,14 +250,16 @@ with tab_video:
             f"+ category ({media.get('category', '—')}). Edit below to improve."
         )
 
-    # Force-update widget value when a new prompt was loaded (scenario or AI)
+    # Force-update widget value when a new prompt was loaded (scenario or AI),
+    # otherwise initialize with the default prompt on first render
     if st.session_state.pop("_cs_prompt_updated", False):
         st.session_state["cs_prompt_edit"] = st.session_state.get("cs_motion_prompt", "")
+    elif "cs_prompt_edit" not in st.session_state:
+        st.session_state["cs_prompt_edit"] = default_prompt
 
     # Editable prompt (always shown — user can tweak any source)
     motion_prompt = st.text_area(
         "Motion Prompt (editable)",
-        value=default_prompt,
         height=120,
         key="cs_prompt_edit",
         help="This is sent to the video model. Describe camera movement + animation, NOT the static image.",
