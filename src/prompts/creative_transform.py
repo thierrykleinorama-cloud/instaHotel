@@ -3,6 +3,58 @@ Prompts for creative transforms: photo-to-video motion prompts, seasonal variant
 """
 
 # ---------------------------------------------------------------------------
+# Hotel context — shared identity brief for all creative generation
+# ---------------------------------------------------------------------------
+
+HOTEL_CONTEXT = """L'Hôtel Noucentista est un boutique-hôtel Art Nouveau situé au cœur de Sitges, station balnéaire cosmopolite à 35 minutes de Barcelone sur la côte méditerranéenne.
+
+IDENTITÉ & HISTOIRE
+- Bâtiment Art Nouveau (Noucentisme catalan) du début du XXe siècle, restauré avec soin
+- 12 chambres uniques, chacune avec des carreaux hydrauliques d'époque (sols géométriques colorés, pièces d'art en soi)
+- Mobilier chiné mêlant antiquités et design contemporain
+- Atmosphère d'une maison d'artiste plutôt que d'un hôtel corporate
+
+PERSONNALITÉ & TON
+- Chaleureux, décalé, jamais prétentieux — comme un ami qui a très bon goût
+- Humour discret et autodérision (les chats qui "gèrent" l'hôtel, les guests qui ne veulent plus partir)
+- Authenticité méditerranéenne : slow living, plaisirs simples, lumière dorée
+- Anti-luxe ostentatoire : le luxe ici c'est le temps, la beauté, le calme
+
+LES CHATS — MASCOTTES OFFICIEUSES
+- Plusieurs chats vivent à l'hôtel en liberté, ce sont les vraies stars du compte Instagram
+- Ils dorment sur les lits des chambres, se prélassent au soleil sur la terrasse, inspectent les arrivées
+- Noms connus : à préciser par l'hôtelier
+- Angle créatif toujours gagnant : les chats qui "possèdent" l'hôtel, qui jugent les guests, qui vivent leur meilleure vie
+
+ESPACES CLÉS
+- Chambres : lits blancs immaculés, coussins colorés, carreaux hydrauliques au sol, lumière naturelle
+- Piscine : petit bassin intime entouré de plantes, reflets dorés, ambiance zen
+- Terrasse rooftop : vue sur les toits de Sitges et la mer, apéros au coucher du soleil
+- Jardin : végétation méditerranéenne, coins ombragés, hamacs
+- Réception : hall Art Nouveau avec détails architecturaux ornés
+- Restaurant/petit-déjeuner : tables dressées avec soin, produits locaux
+
+SITGES & ENVIRONNEMENT
+- Village d'artistes historique, ruelles blanches, bougainvilliers
+- Plages à 5 minutes à pied de l'hôtel
+- Vie nocturne animée mais l'hôtel est un havre de paix
+- Lumière méditerranéenne exceptionnelle (les peintres s'y installaient pour ça)
+- Climat doux toute l'année, été chaud et lumineux
+
+AUDIENCE INSTAGRAM
+- Voyageurs design-conscious, couples, digital nomads
+- Amoureux des chats (gros segment engagé)
+- Francophones, hispanophones, anglophones (contenu trilingue ES/EN/FR)
+- Sensibles à l'esthétique, l'authenticité, les petits détails
+
+CE QUI MARCHE SUR INSTAGRAM
+- Les chats dans des situations inattendues ou drôles
+- Les détails architecturaux (carreaux, ferronneries, lumière)
+- Les moments "je ne veux plus partir" (lit parfait, terrasse au sunset, piscine déserte)
+- Le contraste entre le calme de l'hôtel et la vie animée de Sitges
+- Le storytelling émotionnel (pas les photos catalogue)"""
+
+# ---------------------------------------------------------------------------
 # Photo-to-Video: motion prompt generation
 # ---------------------------------------------------------------------------
 
@@ -23,6 +75,9 @@ Réponds UNIQUEMENT avec le prompt en anglais (pas de JSON, pas de markdown).
 Maximum 150 mots."""
 
 MOTION_PROMPT_TEMPLATE = """Génère un prompt vidéo pour cette photo d'hôtel.
+
+Contexte hôtel :
+{hotel_context}
 
 Photo :
 - Catégorie : {category}

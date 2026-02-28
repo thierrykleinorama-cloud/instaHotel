@@ -111,7 +111,9 @@ def generate_motion_prompt_ai(
     """
     client = _get_anthropic_client()
 
+    from src.prompts.creative_transform import HOTEL_CONTEXT
     user_text = MOTION_PROMPT_TEMPLATE.format(
+        hotel_context=HOTEL_CONTEXT,
         category=media.get("category", ""),
         subcategory=media.get("subcategory", ""),
         ambiance=", ".join(media.get("ambiance", [])) if isinstance(media.get("ambiance"), list) else media.get("ambiance", ""),
@@ -179,10 +181,8 @@ def generate_scenarios(
     client = _get_anthropic_client()
 
     if not hotel_context:
-        hotel_context = (
-            "Hôtel Noucentista — boutique Art Nouveau à Sitges (Barcelone). "
-            "Ambiance chaleureuse, méditerranéenne. Des chats vivent à l'hôtel."
-        )
+        from src.prompts.creative_transform import HOTEL_CONTEXT
+        hotel_context = HOTEL_CONTEXT
 
     user_text = SCENARIO_TEMPLATE.format(
         count=count,

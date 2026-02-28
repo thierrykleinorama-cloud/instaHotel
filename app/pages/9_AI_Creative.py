@@ -24,6 +24,7 @@ from src.services.creative_transform import (
     VIDEO_MODELS,
     DEFAULT_VIDEO_MODEL,
 )
+from src.prompts.creative_transform import HOTEL_CONTEXT
 
 
 @st.cache_data(ttl=300)
@@ -187,6 +188,7 @@ with tab_video:
         with st.expander("View prompt sent to Claude"):
             from src.prompts.creative_transform import MOTION_PROMPT_SYSTEM, MOTION_PROMPT_TEMPLATE
             _preview_user = MOTION_PROMPT_TEMPLATE.format(
+                hotel_context=HOTEL_CONTEXT,
                 category=media.get("category", ""),
                 subcategory=media.get("subcategory", ""),
                 ambiance=", ".join(media.get("ambiance", [])) if isinstance(media.get("ambiance"), list) else media.get("ambiance", ""),
@@ -309,16 +311,14 @@ with tab_scenarios:
         "Each scenario includes a motion prompt you can use to generate the video."
     )
 
-    hotel_context = st.text_area(
-        "Hotel Context",
-        value=(
-            "Hotel Noucentista — Art Nouveau boutique hotel in Sitges (Barcelona). "
-            "Warm Mediterranean vibe, cats live at the hotel as unofficial mascots. "
-            "Guests love the rooftop terrace, the pool, and walking to the beach."
-        ),
-        height=80,
-        key="cs_hotel_ctx",
-    )
+    with st.expander("Hotel Context (click to view/edit)", expanded=False):
+        hotel_context = st.text_area(
+            "Hotel identity brief sent to Claude",
+            value=HOTEL_CONTEXT,
+            height=300,
+            key="cs_hotel_ctx",
+            help="Rich description of the hotel used by Claude to generate on-brand scenarios. Edit to add seasonal events, promotions, etc.",
+        )
 
     creative_brief = st.text_input(
         "Creative brief (optional)",
