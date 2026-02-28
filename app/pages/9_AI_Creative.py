@@ -155,10 +155,10 @@ with tab_video:
     prompt_method = st.radio(
         "Prompt source",
         [
-            "Auto (from metadata — basic)",
-            "AI-generated (Claude writes a cinematic prompt — recommended)",
+            "AI-generated (Claude writes a creative prompt — recommended)",
             "From scenario (use Creative Scenarios tab first)",
             "Manual (write your own)",
+            "Auto (from metadata — basic, camera-only)",
         ],
         key="cs_prompt_method",
         label_visibility="collapsed",

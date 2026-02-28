@@ -7,17 +7,22 @@ Prompts for creative transforms: photo-to-video motion prompts, seasonal variant
 # ---------------------------------------------------------------------------
 
 MOTION_PROMPT_SYSTEM = """Tu es un directeur artistique spécialisé en vidéo pour Instagram Reels.
-Tu transformes une description de photo d'hôtel en un prompt de mouvement cinématique
-pour un modèle IA de génération vidéo (Kling, Veo, etc.).
+Tu transformes une description de photo d'hôtel en un prompt vidéo pour un modèle IA (Kling, Veo, etc.).
 
 L'hôtel est le Noucentista, un boutique Art Nouveau à Sitges (Barcelone).
-Ambiance méditerranéenne, chaleureuse. Des chats vivent à l'hôtel.
+Ambiance méditerranéenne, chaleureuse. Des chats vivent à l'hôtel et sont les mascottes officieuses.
+
+RÈGLE CRITIQUE — Ce qui fait une bonne vidéo :
+- L'ACTION prime sur le mouvement de caméra. "Un chat entre et se couche sur le lit" > "slow dolly forward".
+- Toujours inclure un SUJET ANIMÉ : un chat, une personne, un objet qui bouge, de l'eau, du vent, de la lumière qui change drastiquement.
+- Un simple zoom ou pan sur une image statique = vidéo ennuyeuse et inutilisable.
+- Rester dans le cadre de la photo : NE PAS demander de mouvements qui révèlent des zones hors-champ (pas de pullback montrant des bâtiments, pas de crane-up révélant un panorama absent de la photo).
+- Décrire ce qui SE PASSE, pas ce qui est déjà visible sur l'image statique.
 
 Réponds UNIQUEMENT avec le prompt en anglais (pas de JSON, pas de markdown).
-Le prompt doit décrire le mouvement de caméra et l'animation des éléments, PAS décrire l'image statique.
 Maximum 150 mots."""
 
-MOTION_PROMPT_TEMPLATE = """Génère un prompt de mouvement vidéo pour cette photo d'hôtel.
+MOTION_PROMPT_TEMPLATE = """Génère un prompt vidéo pour cette photo d'hôtel.
 
 Photo :
 - Catégorie : {category}
@@ -33,11 +38,11 @@ Paramètres vidéo :
 Contexte créatif : {creative_brief}
 
 Le prompt doit :
-1. Décrire un mouvement de caméra adapté à {duration}s (slow pan, dolly in, crane up, orbit, etc.)
-2. Animer les éléments naturels (eau qui scintille, rideaux qui bougent, lumière qui change)
-3. Créer une ambiance cinématique cohérente sur {duration} secondes
+1. Décrire une ACTION CONCRÈTE qui se passe dans la scène (un chat qui entre, une personne qui s'assoit, du vent qui soulève les rideaux, de l'eau qui éclabousse, de la lumière qui change radicalement)
+2. Le mouvement de caméra est SECONDAIRE — il accompagne l'action, il ne la remplace pas
+3. Rester DANS le cadre visible de la photo — ne jamais révéler de zones hors-champ (pas de pullback, pas de crane-up montrant des bâtiments absents de la photo)
 4. Être en anglais, optimisé pour Kling v2.1 / Veo 3
-5. Si le brief créatif mentionne un scénario, l'intégrer dans le mouvement"""
+5. Si le brief créatif mentionne un scénario, l'intégrer comme action principale"""
 
 
 # ---------------------------------------------------------------------------
@@ -84,13 +89,20 @@ Tu inventes des scénarios vidéo créatifs, drôles ou émouvants à partir de 
 
 L'hôtel a une personnalité chaleureuse et décalée. Des chats vivent à l'hôtel et sont les mascottes officieuses.
 
+RÈGLE CRITIQUE pour le motion_prompt :
+- Chaque prompt DOIT décrire une ACTION CONCRÈTE avec un sujet animé (chat, personne, objet qui bouge).
+- Un simple mouvement de caméra (zoom, pan, dolly) sur une image statique = vidéo ennuyeuse et INUTILISABLE.
+- Exemples de bonnes actions : "un chat saute sur le lit", "une main ouvre un livre", "le vent soulève violemment les rideaux", "quelqu'un plonge dans la piscine".
+- Exemples de mauvais prompts : "slow dolly forward", "gentle pan across the room", "warm light shifting".
+- Rester DANS le cadre de la photo — ne jamais demander de mouvements révélant du hors-champ.
+
 Réponds en JSON avec cette structure :
 {
   "scenarios": [
     {
       "title": "Titre court (5-8 mots)",
       "description": "Description du scénario en 2-3 phrases",
-      "motion_prompt": "Prompt en anglais pour le modèle vidéo (max 150 mots)",
+      "motion_prompt": "Prompt en anglais pour le modèle vidéo — DOIT contenir une action concrète (max 150 mots)",
       "mood": "L'ambiance visée (drôle/émouvant/spectaculaire/poétique)",
       "caption_hook": "Première ligne de la légende Instagram (accroche)"
     }
@@ -109,8 +121,12 @@ Contexte hôtel :
 
 Brief créatif : {creative_brief}
 
-Les scénarios doivent être réalisables par un modèle de génération vidéo IA (pas de montage complexe).
-Privilégie l'humour, l'émotion ou le spectaculaire. Les chats de l'hôtel sont toujours un bon angle."""
+IMPORTANT :
+- Chaque scénario DOIT avoir une action concrète avec un sujet animé (chat, personne, objet en mouvement).
+- Un simple zoom ou pan = inutilisable. Il faut que quelque chose SE PASSE dans la vidéo.
+- Les scénarios doivent être réalisables par un modèle de génération vidéo IA (pas de montage complexe).
+- Privilégie l'humour, l'émotion ou le spectaculaire. Les chats de l'hôtel sont toujours un excellent angle.
+- Reste dans le cadre de la photo — ne pas imaginer des bâtiments ou décors absents de l'image."""
 
 
 # ---------------------------------------------------------------------------

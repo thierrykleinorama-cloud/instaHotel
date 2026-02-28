@@ -238,11 +238,12 @@ def generate_scenarios(
 # Available video models on Replicate
 VIDEO_MODELS = {
     "kling-v2.1": {
-        "model_id": "kwaivgi/kling-v2.1-image-to-video",
+        "model_id": "kwaivgi/kling-v2.1",
         "label": "Kling v2.1",
         "cost_5s": 0.30,
         "cost_10s": 0.60,
         "supports_image": True,
+        "image_param": "start_image",
     },
 }
 
@@ -276,12 +277,12 @@ def photo_to_video(
     b64 = base64.b64encode(png).decode()
     data_uri = f"data:image/png;base64,{b64}"
 
+    image_param = model_info.get("image_param", "start_image")
     input_params = {
-        "image": data_uri,
+        image_param: data_uri,
         "prompt": prompt,
         "negative_prompt": negative_prompt,
         "duration": duration,
-        "aspect_ratio": aspect_ratio,
     }
 
     # Create prediction (async — video gen takes 1-5 min)
