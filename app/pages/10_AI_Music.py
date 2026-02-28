@@ -66,7 +66,7 @@ with tab_gen:
     for i, (label, preset_prompt) in enumerate(presets):
         with preset_cols[i]:
             if st.button(label, key=f"mu_preset_{i}", use_container_width=True):
-                st.session_state["mu_prompt_val"] = preset_prompt
+                st.session_state["mu_prompt"] = preset_prompt
 
     # Show ambiance/category maps for reference
     with st.expander("Style reference (ambiance & category mappings)"):
@@ -80,9 +80,12 @@ with tab_gen:
             for k, v in CATEGORY_MUSIC_MAP.items():
                 st.caption(f"{k} → {v}")
 
+    # Initialize prompt if not set
+    if "mu_prompt" not in st.session_state:
+        st.session_state["mu_prompt"] = presets[0][1]
+
     music_prompt = st.text_area(
         "Music Prompt",
-        value=st.session_state.get("mu_prompt_val", presets[0][1]),
         height=100,
         key="mu_prompt",
         help="Describe the style, mood, instruments. The AI generates instrumental music.",

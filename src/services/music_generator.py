@@ -39,7 +39,7 @@ def _get_replicate_client():
 
 MUSIC_MODELS = {
     "musicgen": {
-        "model_id": "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedebb",
+        "model_id": "meta/musicgen",
         "label": "MusicGen (Meta)",
         "cost_per_sec": 0.002,
     },
