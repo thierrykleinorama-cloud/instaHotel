@@ -217,6 +217,7 @@ with tab_video:
                         aspect_ratio=aspect_ratio,
                     )
                     st.session_state["cs_motion_prompt"] = ai_result["prompt"]
+                    st.session_state["_cs_prompt_updated"] = True
                     usage = ai_result["_usage"]
                     st.success(f"AI prompt generated! (${usage['cost_usd']:.4f})")
                 except Exception as e:
@@ -248,6 +249,10 @@ with tab_video:
             f"Auto-generated from metadata: ambiance ({', '.join(media.get('ambiance', []) or ['—'])}) "
             f"+ category ({media.get('category', '—')}). Edit below to improve."
         )
+
+    # Force-update widget value when a new prompt was loaded (scenario or AI)
+    if st.session_state.pop("_cs_prompt_updated", False):
+        st.session_state["cs_prompt_edit"] = st.session_state.get("cs_motion_prompt", "")
 
     # Editable prompt (always shown — user can tweak any source)
     motion_prompt = st.text_area(
@@ -367,4 +372,5 @@ with tab_scenarios:
 
                 if st.button("Use this prompt for video", key=f"cs_use_scenario_{i}"):
                     st.session_state["cs_motion_prompt"] = s.get("motion_prompt", "")
+                    st.session_state["_cs_prompt_updated"] = True
                     st.info("Prompt loaded! Switch to the Photo-to-Video tab to generate.")
