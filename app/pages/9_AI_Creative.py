@@ -367,5 +367,4 @@ with tab_scenarios:
 
                 if st.button("Use this prompt for video", key=f"cs_use_scenario_{i}"):
                     st.session_state["cs_motion_prompt"] = s.get("motion_prompt", "")
-                    st.session_state["cs_prompt_edit"] = s.get("motion_prompt", "")
                     st.info("Prompt loaded! Switch to the Photo-to-Video tab to generate.")
