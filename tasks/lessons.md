@@ -95,6 +95,31 @@
 **Erreur** : Changed service files but Streamlit kept serving old code despite clearing `__pycache__`.
 **Regle** : Streamlit hot-reloads page files but keeps service modules cached in the Python process. Must `taskkill //F //IM streamlit.exe` and restart — `pkill` may not kill all instances on Windows/MINGW.
 
+## Lesson 2026-02-28 — Replicate model IDs change over time
+**Erreur** : Hardcoded `kwaivgi/kling-v2.1-image-to-video` but the actual model ID is `kwaivgi/kling-v2.1`. Got 404 errors.
+**Regle** : Always verify model IDs with `client.models.get()` or `client.models.search()` before hardcoding. Model IDs and input param names can change without notice.
+
+## Lesson 2026-02-28 — Video prompts: action > camera movement
+**Erreur** : Initial prompts described only camera movement ("slow dolly forward", "gentle pan") → boring unusable videos (just a zoom on a static image).
+**Pattern** : The video model (Kling) needs concrete ACTION to animate. Camera-only prompts produce near-static output.
+**Regle** : Video prompts MUST describe what HAPPENS (cat jumping, person entering, wind blowing, objects falling) — not just camera movement. Update system prompts to enforce this.
+
+## Lesson 2026-02-28 — Stay in frame for video generation
+**Erreur** : Prompts asking for pullback/crane-up to "reveal the hotel" caused Kling to hallucinate random buildings.
+**Regle** : Never ask the video model to reveal areas outside the original photo. Keep all action within the visible frame. Use `end_image` param if you need to show a specific destination.
+
+## Lesson 2026-02-28 — Replicate rate limiting with low credit
+**Erreur** : Launched 3 video generations in parallel but got 429 (rate limited — burst of 1 with < $5 credit).
+**Regle** : With low Replicate credit, submit predictions sequentially with 15s delays between each.
+
+## Lesson 2026-02-28 — Always restart Streamlit after code changes
+**Erreur** : Fixed model ID in service but Streamlit UI still used old code (module cached in memory). UI returned 404, API worked fine.
+**Regle** : After changing service/prompt files, ALWAYS kill and restart Streamlit before testing the UI.
+
+## Lesson 2026-02-28 — Test via UI, not just API
+**Erreur** : Tested video generation via Python API only. When user tested the UI, it failed (stale module cache + wrong model ID).
+**Regle** : Always test through the actual Streamlit UI (via Playwright or manual) after code changes, not just via Python scripts.
+
 ---
 
 ## Regles du projet

@@ -133,10 +133,14 @@
 - [x] **AI Creative Studio page** — `app/pages/9_AI_Creative.py` (photo-to-video + scenarios)
 - [x] **AI Music page** — `app/pages/10_AI_Music.py` (music gen + video composite)
 - [x] **AI Lab hub updated** — new Creative Studio + AI Music cards
+- [x] **Prompt quality fix**: action > camera movement, stay in frame, AI-generated as default
+- [x] **Kling model ID fix**: `kwaivgi/kling-v2.1` + `start_image` param
+- [x] **UI tested end-to-end** via Playwright: scenario gen + video gen + video player + download
 - [ ] **Seasonal & Element Variants** — summer → winter, add elements, object removal
 - [ ] **AI Humor** — dedicated humor scenario mode
 - [ ] **Carousel** — group related media into multi-image posts
 - [ ] **Veo 3 integration** — add as second video model option (Google AI Studio API)
+- [ ] **End image support** — Kling `end_image` param for transitions (show real hotel facade)
 
 ---
 

@@ -52,5 +52,7 @@ backups/
 # Claude Code
 .claude/
 
-# Screenshots (Playwright testing)
+# Screenshots & test outputs (Playwright testing, generated videos)
 screenshots/
+test_screenshots/
+test_outputs/
