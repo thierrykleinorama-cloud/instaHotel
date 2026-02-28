@@ -25,6 +25,13 @@ from src.services.creative_transform import (
     DEFAULT_VIDEO_MODEL,
 )
 from src.prompts.creative_transform import HOTEL_CONTEXT
+from src.services.creative_job_queries import (
+    save_scenario_job,
+    save_video_job,
+    fetch_latest_scenarios,
+    fetch_video_jobs,
+)
+from src.services.publisher import upload_to_supabase_storage
 
 
 @st.cache_data(ttl=300)
@@ -131,6 +138,22 @@ with col_info:
         st.caption(f"Notes: {_notes}")
 
 st.divider()
+
+# --- Restore previous results from DB on page load ---
+# Clear cached results when switching to a different image
+if st.session_state.get("_cs_loaded_media_id") != media_id:
+    st.session_state["_cs_loaded_media_id"] = media_id
+    st.session_state.pop("cs_scenarios", None)
+    st.session_state.pop("cs_prev_videos", None)
+    st.session_state.pop("cs_video_result", None)
+
+if "cs_scenarios" not in st.session_state:
+    _saved_scenarios = fetch_latest_scenarios(media_id)
+    if _saved_scenarios:
+        st.session_state["cs_scenarios"] = {"scenarios": _saved_scenarios}
+
+if "cs_prev_videos" not in st.session_state:
+    st.session_state["cs_prev_videos"] = fetch_video_jobs(media_id, limit=5)
 
 # -------------------------------------------------------
 # Tabs: Photo-to-Video / Creative Scenarios
@@ -302,6 +325,19 @@ with tab_video:
                 )
                 st.session_state["cs_video_result"] = result
                 st.success(f"Video generated! Cost: ${result['_cost']['cost_usd']:.2f}")
+                # Persist video to Storage + DB for crash recovery
+                try:
+                    fname = f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel.mp4"
+                    video_url = upload_to_supabase_storage(result["video_bytes"], fname, "video/mp4")
+                    save_video_job(
+                        source_media_id=media_id,
+                        video_url=video_url,
+                        prompt=motion_prompt,
+                        cost_usd=result["_cost"]["cost_usd"],
+                        params={"duration": duration, "aspect_ratio": aspect_ratio, "model": video_model},
+                    )
+                except Exception:
+                    pass  # non-critical
             except Exception as e:
                 st.error(f"Video generation failed: {e}")
 
@@ -322,6 +358,21 @@ with tab_video:
             )
         with col_music:
             st.page_link("pages/10_AI_Music.py", label="Add Music", icon=":material/music_note:")
+
+    # Show previously generated videos from DB
+    prev_videos = st.session_state.get("cs_prev_videos", [])
+    if prev_videos:
+        with st.expander(f"Previous videos for this photo ({len(prev_videos)})", expanded=not video_result):
+            for j, vj in enumerate(prev_videos):
+                params = vj.get("params", {})
+                if isinstance(params, str):
+                    import json
+                    params = json.loads(params)
+                st.caption(f"**{vj.get('created_at', '?')[:16]}** | ${vj.get('cost_usd', 0):.2f}")
+                if params.get("prompt"):
+                    st.caption(f"Prompt: {params['prompt'][:120]}...")
+                if vj.get("result_url"):
+                    st.video(vj["result_url"])
 
 # -------------------------------------------------------
 # Tab 2: Creative Scenarios
@@ -366,6 +417,16 @@ with tab_scenarios:
                 st.session_state["cs_scenarios"] = result
                 usage = result.get("_usage", {})
                 st.caption(f"Cost: ${usage.get('cost_usd', 0):.4f}")
+                # Persist to DB for crash recovery
+                try:
+                    save_scenario_job(
+                        source_media_id=media_id,
+                        scenarios=result.get("scenarios", []),
+                        cost_usd=usage.get("cost_usd", 0),
+                        params={"brief": creative_brief, "count": scenario_count},
+                    )
+                except Exception:
+                    pass  # non-critical — don't block on save failure
             except Exception as e:
                 st.error(f"Scenario generation failed: {e}")
 
