@@ -6,53 +6,51 @@ Prompts for creative transforms: photo-to-video motion prompts, seasonal variant
 # Hotel context — shared identity brief for all creative generation
 # ---------------------------------------------------------------------------
 
-HOTEL_CONTEXT = """L'Hôtel Noucentista est un boutique-hôtel Art Nouveau situé au cœur de Sitges, station balnéaire cosmopolite à 35 minutes de Barcelone sur la côte méditerranéenne.
+HOTEL_CONTEXT = """Hotel Noucentista is a boutique Art Nouveau hotel in the heart of Sitges, a cosmopolitan seaside town 35 minutes from Barcelona on the Mediterranean coast.
 
-IDENTITÉ & HISTOIRE
-- Bâtiment Art Nouveau (Noucentisme catalan) du début du XXe siècle, restauré avec soin
-- 12 chambres uniques, chacune avec des carreaux hydrauliques d'époque (sols géométriques colorés, pièces d'art en soi)
-- Mobilier chiné mêlant antiquités et design contemporain
-- Atmosphère d'une maison d'artiste plutôt que d'un hôtel corporate
+IDENTITY & HISTORY
+- Early 20th-century Art Nouveau building (Catalan Noucentisme), carefully restored
+- 12 unique rooms, each featuring original hydraulic floor tiles (colorful geometric patterns, works of art in themselves)
+- Curated mix of antique and contemporary furniture
+- Feels like an artist's home, not a corporate hotel
 
-PERSONNALITÉ & TON
-- Chaleureux, décalé, jamais prétentieux — comme un ami qui a très bon goût
-- Humour discret et autodérision (les chats qui "gèrent" l'hôtel, les guests qui ne veulent plus partir)
-- Authenticité méditerranéenne : slow living, plaisirs simples, lumière dorée
-- Anti-luxe ostentatoire : le luxe ici c'est le temps, la beauté, le calme
+PERSONALITY & TONE
+- Warm, quirky, never pretentious — like a friend with impeccable taste
+- Subtle humor and self-deprecation (the cats "run" the hotel, guests who never want to leave)
+- Mediterranean authenticity: slow living, simple pleasures, golden light
+- Anti-ostentatious luxury: here luxury means time, beauty, and peace
 
-LES CHATS — MASCOTTES OFFICIEUSES
-- Plusieurs chats vivent à l'hôtel en liberté, ce sont les vraies stars du compte Instagram
-- Ils dorment sur les lits des chambres, se prélassent au soleil sur la terrasse, inspectent les arrivées
-- Noms connus : à préciser par l'hôtelier
-- Angle créatif toujours gagnant : les chats qui "possèdent" l'hôtel, qui jugent les guests, qui vivent leur meilleure vie
+THE CATS — UNOFFICIAL MASCOTS
+- Several cats roam the hotel freely — they are the real Instagram stars
+- They sleep on guest beds, lounge in the sun on the terrace, inspect new arrivals
+- Always a winning creative angle: cats who "own" the hotel, judge the guests, live their best life
 
-ESPACES CLÉS
-- Chambres : lits blancs immaculés, coussins colorés, carreaux hydrauliques au sol, lumière naturelle
-- Piscine : petit bassin intime entouré de plantes, reflets dorés, ambiance zen
-- Terrasse rooftop : vue sur les toits de Sitges et la mer, apéros au coucher du soleil
-- Jardin : végétation méditerranéenne, coins ombragés, hamacs
-- Réception : hall Art Nouveau avec détails architecturaux ornés
-- Restaurant/petit-déjeuner : tables dressées avec soin, produits locaux
+KEY SPACES
+- Rooms: pristine white beds, colorful cushions, hydraulic tile floors, natural light
+- Rooftop terrace: views over Sitges rooftops and the sea, sunset drinks
+- Patio: Mediterranean plants, shaded corners, hammocks
+- Reception: Art Nouveau lobby with ornate architectural details
+- Breakfast area: carefully set tables, local products
 
-SITGES & ENVIRONNEMENT
-- Village d'artistes historique, ruelles blanches, bougainvilliers
-- Plages à 5 minutes à pied de l'hôtel
-- Vie nocturne animée mais l'hôtel est un havre de paix
-- Lumière méditerranéenne exceptionnelle (les peintres s'y installaient pour ça)
-- Climat doux toute l'année, été chaud et lumineux
+SITGES & SURROUNDINGS
+- Historic artists' village, white alleys, bougainvillea
+- Beaches 5 minutes walk from the hotel
+- Lively nightlife but the hotel is a peaceful haven
+- Exceptional Mediterranean light (painters settled here for it)
+- Mild climate year-round, hot and bright summers
 
-AUDIENCE INSTAGRAM
-- Voyageurs design-conscious, couples, digital nomads
-- Amoureux des chats (gros segment engagé)
-- Francophones, hispanophones, anglophones (contenu trilingue ES/EN/FR)
-- Sensibles à l'esthétique, l'authenticité, les petits détails
+INSTAGRAM AUDIENCE
+- Design-conscious travelers, couples, digital nomads
+- Cat lovers (highly engaged segment)
+- Spanish, English, and French speakers (trilingual content ES/EN/FR)
+- Drawn to aesthetics, authenticity, and small details
 
-CE QUI MARCHE SUR INSTAGRAM
-- Les chats dans des situations inattendues ou drôles
-- Les détails architecturaux (carreaux, ferronneries, lumière)
-- Les moments "je ne veux plus partir" (lit parfait, terrasse au sunset, piscine déserte)
-- Le contraste entre le calme de l'hôtel et la vie animée de Sitges
-- Le storytelling émotionnel (pas les photos catalogue)"""
+WHAT WORKS ON INSTAGRAM
+- Cats in unexpected or funny situations
+- Architectural details (tiles, ironwork, light play)
+- "I never want to leave" moments (perfect bed, sunset terrace, quiet morning)
+- Contrast between the hotel's calm and Sitges' vibrant life
+- Emotional storytelling (not catalog-style photos)"""
 
 # ---------------------------------------------------------------------------
 # Photo-to-Video: motion prompt generation
