@@ -3,11 +3,15 @@ Music generation service — generates background music for Reels via Replicate 
 """
 import os
 import time
+from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
 import httpx
 
 from src.prompts.music_generation import build_music_prompt
+
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 
 # ---------------------------------------------------------------------------
