@@ -447,7 +447,7 @@ if view_mode == "Week Grid":
                         media_id = entry.get("manual_media_id") or entry.get("media_id")
                         has_content = entry["id"] in _content_map
                         _focus = entry.get("focus", "hotel")
-                        _dest_tag = " &compass;" if _focus == "destination" else ""
+                        _dest_tag = " :orange[D]" if _focus == "destination" else ""
 
                         # Show thumbnail if media assigned
                         if media_id:
