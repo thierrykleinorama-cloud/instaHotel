@@ -306,7 +306,7 @@ with tab_video:
     with st.expander("Negative prompt (technical — usually no need to change)"):
         neg_prompt = st.text_input(
             "Negative prompt",
-            value="blurry, distorted, low quality, text overlay, watermark",
+            value="blurry, distorted, low quality, text overlay, watermark, oversized objects, unrealistic proportions, plastic texture, AI artifacts, magical glow, sparkling effects, giant objects, miniature objects",
             key="cs_neg",
             help="Tells the model what to avoid. Standard defaults work well.",
         )

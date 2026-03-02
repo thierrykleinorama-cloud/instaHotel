@@ -69,6 +69,14 @@ RÈGLE CRITIQUE — Ce qui fait une bonne vidéo :
 - Rester dans le cadre de la photo : NE PAS demander de mouvements qui révèlent des zones hors-champ (pas de pullback montrant des bâtiments, pas de crane-up révélant un panorama absent de la photo).
 - Décrire ce qui SE PASSE, pas ce qui est déjà visible sur l'image statique.
 
+RÉALISME — la vidéo doit ressembler à un VRAI tournage, sauf si le brief créatif indique le contraire :
+- Les proportions des objets doivent rester réalistes (une tasse de café = taille normale sur la table, pas géante).
+- Préférer des mouvements subtils et naturels : un rideau qui bouge doucement > un rideau qui vole comme dans une tempête.
+- PAS d'effets exagérés ou surnaturels. Mots INTERDITS dans le prompt : "magical", "ethereal", "dreamy glow", "sparkling", "scintillating", "glowing particles", "mystical". Ces mots produisent des vidéos artificielles.
+- Le mot "cinematic" est OK. "Natural lighting", "soft breeze", "gentle movement" = bon.
+- La physique doit être respectée : l'eau coule vers le bas, la lumière vient d'une source réaliste, les objets ont un poids normal.
+- EXCEPTION : si le brief créatif mentionne humour, chats IA, éléments fantaisistes ou animation stylisée — le réalisme est relaxé et la créativité surréaliste est encouragée.
+
 Réponds UNIQUEMENT avec le prompt en anglais (pas de JSON, pas de markdown).
 Maximum 150 mots."""
 
@@ -95,7 +103,8 @@ Le prompt doit :
 2. Le mouvement de caméra est SECONDAIRE — il accompagne l'action, il ne la remplace pas
 3. Rester DANS le cadre visible de la photo — ne jamais révéler de zones hors-champ (pas de pullback, pas de crane-up montrant des bâtiments absents de la photo)
 4. Être en anglais, optimisé pour Kling v2.1 / Veo 3
-5. Si le brief créatif mentionne un scénario, l'intégrer comme action principale"""
+5. Si le brief créatif mentionne un scénario, l'intégrer comme action principale
+6. RÉALISME par défaut : la vidéo doit ressembler à un vrai tournage smartphone/caméra. Pas de lumière surnaturelle, pas d'objets qui changent de taille, pas de textures plastiques. Ne jamais utiliser les mots "magical", "ethereal", "sparkling", "scintillating", "glowing". SAUF si le brief créatif demande explicitement un effet fantaisiste (humour, chats IA, éléments animés décoratifs)."""
 
 
 # ---------------------------------------------------------------------------
@@ -103,15 +112,15 @@ Le prompt doit :
 # ---------------------------------------------------------------------------
 
 AMBIANCE_MOTION_MAP = {
-    "chaleureux": "warm slow dolly forward, golden light rays shifting",
-    "lumineux": "gentle crane up revealing the bright space, light reflections dancing",
+    "chaleureux": "warm slow dolly forward, soft natural light",
+    "lumineux": "gentle crane up revealing the bright space, natural light reflections on surfaces",
     "intime": "slow push-in creating intimacy, shallow depth of field rack focus",
     "méditerranéen": "slow pan across, Mediterranean breeze moving plants and curtains",
-    "élégant": "smooth tracking shot, Art Nouveau details catching light",
-    "zen": "ultra-slow drift, water ripples, serene atmosphere",
-    "romantique": "dreamy slow orbit, soft bokeh lights appearing",
+    "élégant": "smooth tracking shot, Art Nouveau details catching natural light",
+    "zen": "ultra-slow drift, water ripples, calm atmosphere",
+    "romantique": "slow orbit, soft natural background blur, warm tones",
     "convivial": "lively dolly through space, subtle life movement in background",
-    "luxueux": "cinematic dolly-in with precision, rich textures highlighted",
+    "luxueux": "cinematic dolly-in with precision, rich textures in natural light",
     "naturel": "gentle handheld drift, leaves and shadows moving naturally",
 }
 
@@ -149,6 +158,13 @@ RÈGLE CRITIQUE pour le motion_prompt :
 - Exemples de mauvais prompts : "slow dolly forward", "gentle pan across the room", "warm light shifting".
 - Rester DANS le cadre de la photo — ne jamais demander de mouvements révélant du hors-champ.
 
+RÉALISME :
+- Par défaut, les scénarios doivent produire des vidéos RÉALISTES (comme filmées au smartphone ou caméra pro).
+- Les proportions doivent être respectées (pas d'objets géants ou miniatures), la physique doit être naturelle.
+- NE PAS utiliser dans le motion_prompt : "magical", "ethereal", "sparkling", "scintillating", "glowing particles". Ces mots produisent des résultats artificiels.
+- EXCEPTION pour mood "drôle" ou scénarios avec chats/éléments fantaisistes : le surréalisme est autorisé et encouragé (chats qui parlent, objets qui s'animent, effets comiques exagérés).
+- Pour moods "émouvant" et "poétique" : rester réaliste — la beauté vient de la situation et de la lumière naturelle, pas d'effets spéciaux.
+
 Réponds en JSON avec cette structure :
 {
   "scenarios": [
@@ -179,7 +195,8 @@ IMPORTANT :
 - Un simple zoom ou pan = inutilisable. Il faut que quelque chose SE PASSE dans la vidéo.
 - Les scénarios doivent être réalisables par un modèle de génération vidéo IA (pas de montage complexe).
 - Privilégie l'humour, l'émotion ou le spectaculaire. Les chats de l'hôtel sont toujours un excellent angle.
-- Reste dans le cadre de la photo — ne pas imaginer des bâtiments ou décors absents de l'image."""
+- Reste dans le cadre de la photo — ne pas imaginer des bâtiments ou décors absents de l'image.
+- RÉALISME : le motion_prompt doit produire une vidéo qui ressemble à un vrai tournage. Proportions normales, physique naturelle, lumière réaliste. Pas de mots comme "magical", "sparkling", "ethereal". EXCEPTION : mood "drôle" ou scénarios fantaisistes avec chats — le surréalisme est OK."""
 
 
 # ---------------------------------------------------------------------------
