@@ -151,6 +151,12 @@ with st.sidebar:
         default=["generated", "content_ready", "validated", "scheduled", "published", "planned"],
         key="cal_status_filter",
     )
+    focus_filter = st.multiselect(
+        "Filter by Focus",
+        ["hotel", "destination"],
+        default=["hotel", "destination"],
+        key="cal_focus_filter",
+    )
 
 # -------------------------------------------------------
 # Fetch calendar data
@@ -159,6 +165,8 @@ calendar_data = fetch_calendar_range(start_date, end_date)
 
 if status_filter:
     calendar_data = [e for e in calendar_data if e.get("status") in status_filter]
+if focus_filter:
+    calendar_data = [e for e in calendar_data if e.get("focus", "hotel") in focus_filter]
 
 if not calendar_data:
     st.info("No calendar entries for this range. Use the sidebar to generate.")
@@ -438,15 +446,17 @@ if view_mode == "Week Grid":
                         slot = entry.get("slot_index", 1)
                         media_id = entry.get("manual_media_id") or entry.get("media_id")
                         has_content = entry["id"] in _content_map
+                        _focus = entry.get("focus", "hotel")
+                        _dest_tag = " &compass;" if _focus == "destination" else ""
 
                         # Show thumbnail if media assigned
                         if media_id:
                             score_str = f"{score:.0f}" if score else "—"
                             caption_icon = " &check;" if has_content else ""
-                            st.markdown(f":{STATUS_COLORS.get(status, 'gray')}[●] {cat}{caption_icon}")
+                            st.markdown(f":{STATUS_COLORS.get(status, 'gray')}[●] {cat}{_dest_tag}{caption_icon}")
                             st.caption(f"S{slot} | {score_str}pts")
                         else:
-                            st.markdown(f":gray[○] {cat}")
+                            st.markdown(f":gray[○] {cat}{_dest_tag}")
                             st.caption(f"S{slot} | no media")
 
         st.divider()
@@ -472,15 +482,36 @@ else:
         score_str = f"{score:.1f}" if score else "—"
         color = STATUS_COLORS.get(status, "gray")
         caption_tag = " | captions" if has_content else ""
+        _focus = entry.get("focus", "hotel")
+        _focus_tag = " | Destination" if _focus == "destination" else ""
 
         _is_expanded = st.session_state.get("cal_expanded_id") == entry["id"]
-        with st.expander(f":{color}[●] {post_date} — S{slot} | {cat} | {score_str}pts | {status}{caption_tag}", expanded=_is_expanded):
+        with st.expander(f":{color}[●] {post_date} — S{slot} | {cat}{_focus_tag} | {score_str}pts | {status}{caption_tag}", expanded=_is_expanded):
             c1, c2 = st.columns([2, 1])
 
             with c1:
                 st.markdown(f"**Date:** {post_date}  \n**Slot:** {slot}  \n**Category:** {cat}  \n**Format:** {fmt}")
                 st.markdown(f"**Season:** {season}  \n**Theme:** {theme}")
-                st.markdown(f"**Score:** {score_str}  \n**Status:** :{color}[{status}]")
+                _focus_label = "Destination (Sitges Insider)" if _focus == "destination" else "Hotel"
+                st.markdown(f"**Focus:** {_focus_label}  \n**Score:** {score_str}  \n**Status:** :{color}[{status}]")
+
+                if _focus == "destination":
+                    _dest_topic = entry.get("destination_topic") or ""
+                    _new_topic = st.text_input(
+                        "Destination topic",
+                        value=_dest_topic,
+                        placeholder="e.g. Buddhist temple hike, best vermouth spots...",
+                        key=f"dest_topic_{entry['id']}",
+                        help="Optional — Claude will auto-pick from context if empty",
+                    )
+                    if _new_topic != _dest_topic:
+                        from src.services.editorial_queries import upsert_calendar_entry
+                        upsert_calendar_entry({
+                            "post_date": post_date,
+                            "slot_index": slot,
+                            "destination_topic": _new_topic,
+                        })
+                        st.caption("Topic saved.")
 
                 breakdown = entry.get("score_breakdown")
                 if breakdown:

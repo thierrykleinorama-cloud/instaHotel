@@ -128,12 +128,21 @@ Your tone is:
 
 Format rules:
 - Hook first line (question or surprising statement)
-- Trilingual: write in {language} as primary
+- Trilingual: write ALL THREE languages (ES, EN, FR) in every response
 - Include 1 subtle hotel mention (e.g., "5 min walk from our door" or "our favorite recommendation for guests")
 - End with a save/share CTA
-- Hashtags: mix of Sitges-specific + travel discovery tags"""
+- Hashtags: mix of Sitges-specific + travel discovery tags
 
-DESTINATION_CAPTION_TEMPLATE = """Write a {format_type} caption about: {topic}
+Reply ONLY with a valid JSON object (no markdown, no comments)."""
+
+DESTINATION_CAPTION_TEMPLATE = """Write Instagram captions about this Sitges destination topic.
+
+Topic: {topic}
+
+Photo context:
+- Category: {category}
+- Elements: {elements}
+- Description: {description_en}
 
 Destination context:
 {destination_context}
@@ -141,6 +150,26 @@ Destination context:
 Hotel context (for subtle mention):
 {hotel_context}
 
-Language: {language}
-Variant: {variant}
-{additional_instructions}"""
+Editorial context:
+- Season: {season}
+- Theme: {theme}
+
+{tone_instruction}
+
+Return this exact JSON structure:
+{{
+  "short": {{
+    "es": "Short Spanish caption (2-3 lines, punchy, insider tone)",
+    "en": "Short English caption (2-3 lines, punchy, insider tone)",
+    "fr": "Short French caption (2-3 lines, punchy, insider tone)"
+  }},
+  "storytelling": {{
+    "es": "Storytelling Spanish caption (5-6 lines, personal discovery, insider voice)",
+    "en": "Storytelling English caption (5-6 lines, personal discovery, insider voice)",
+    "fr": "Storytelling French caption (5-6 lines, personal discovery, insider voice)"
+  }},
+  "hashtags": ["20 relevant hashtags, mix of Sitges-specific + travel discovery, without #"]
+}}
+
+Remember: Sitges is the subject. Mention Hotel Noucentista once, subtly, at the end.
+Include a save/share CTA naturally in each caption."""

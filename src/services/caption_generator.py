@@ -10,6 +10,12 @@ import anthropic
 
 from src.prompts.caption_generation import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE, VIDEO_INSTRUCTION
 from src.prompts.tone_variants import get_tone_instruction, get_tone_system_addendum
+from src.prompts.destination_content import (
+    DESTINATION_CAPTION_SYSTEM,
+    DESTINATION_CAPTION_TEMPLATE,
+    DESTINATION_CONTEXT,
+)
+from src.prompts.creative_transform import HOTEL_CONTEXT
 
 # Available models for AI Lab
 AVAILABLE_MODELS = {
@@ -121,6 +127,71 @@ def generate_captions(
     result = _parse_json_response(raw_text)
 
     # Attach usage metadata
+    input_tokens = response.usage.input_tokens
+    output_tokens = response.usage.output_tokens
+    result["_usage"] = {
+        "model": model,
+        "model_label": AVAILABLE_MODELS.get(model, {}).get("label", model),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": compute_cost(model, input_tokens, output_tokens),
+    }
+
+    return result
+
+
+def generate_destination_captions(
+    media: dict,
+    topic: str,
+    theme: str = "",
+    season: str = "",
+    include_image: bool = False,
+    image_base64: Optional[str] = None,
+    model: str = DEFAULT_MODEL,
+    tone: str = "default",
+) -> dict:
+    """Generate destination-focused Instagram captions via Claude API.
+
+    Same return shape as generate_captions(): short, storytelling, hashtags, _usage.
+    Uses DESTINATION_CAPTION_SYSTEM + DESTINATION_CAPTION_TEMPLATE.
+    """
+    client = _get_client()
+
+    prompt_text = DESTINATION_CAPTION_TEMPLATE.format(
+        topic=topic or "auto — pick the best destination angle based on the photo",
+        category=media.get("category", ""),
+        elements=", ".join(media.get("elements", [])) if isinstance(media.get("elements"), list) else media.get("elements", ""),
+        description_en=media.get("description_en", ""),
+        destination_context=DESTINATION_CONTEXT,
+        hotel_context=HOTEL_CONTEXT,
+        season=season,
+        theme=theme,
+        tone_instruction=get_tone_instruction(tone),
+    )
+
+    content = []
+    if include_image and image_base64:
+        content.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/jpeg", "data": image_base64},
+        })
+    content.append({"type": "text", "text": prompt_text})
+
+    sys_prompt = DESTINATION_CAPTION_SYSTEM
+    tone_addendum = get_tone_system_addendum(tone)
+    if tone_addendum:
+        sys_prompt = sys_prompt + "\n\n" + tone_addendum
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=2000,
+        system=sys_prompt,
+        messages=[{"role": "user", "content": content}],
+    )
+
+    raw_text = response.content[0].text
+    result = _parse_json_response(raw_text)
+
     input_tokens = response.usage.input_tokens
     output_tokens = response.usage.output_tokens
     result["_usage"] = {

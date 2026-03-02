@@ -254,6 +254,11 @@ def generate_calendar(
             target_fmt = rule.get("preferred_format")
             min_q = rule.get("min_quality") or 6
 
+            # Destination focus: prefer outdoor/destination categories if no specific one set
+            focus = rule.get("focus", "hotel")
+            if focus == "destination" and not target_cat:
+                target_cat = "exterieur"
+
             candidates = select_best_media(
                 all_media=all_media,
                 target_category=target_cat,
@@ -287,6 +292,7 @@ def generate_calendar(
                 "media_score": best_score if best_media else None,
                 "score_breakdown": best_breakdown if best_media else None,
                 "status": "generated" if best_media else "planned",
+                "focus": rule.get("focus", "hotel"),
             }
             entries.append(entry)
 

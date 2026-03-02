@@ -27,6 +27,8 @@ page_title("Rules & Themes", "Configure editorial strategy")
 
 CATEGORIES = ["chambre", "commun", "exterieur", "gastronomie", "experience"]
 FORMATS = ["feed", "story", "reel"]
+FOCUS_OPTIONS = ["hotel", "destination"]
+FOCUS_LABELS = {"hotel": "Hotel", "destination": "Destination (Sitges Insider)"}
 ASPECT_RATIOS = ["1:1", "4:5", "9:16", "16:9", "3:4"]
 SEASONS = ["printemps", "ete", "automne", "hiver"]
 DAY_NAMES = {1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday", 5: "Friday", 6: "Saturday", 7: "Sunday"}
@@ -59,8 +61,9 @@ with tab_rules:
             label = f"{day_name} — Slot {slot}"
             is_active = rule.get("is_active", True)
             icon = "" if is_active else " (inactive)"
+            _focus_tag = " | Destination" if rule.get("focus") == "destination" else ""
 
-            with st.expander(f"{label}{icon}", expanded=False):
+            with st.expander(f"{label}{_focus_tag}{icon}", expanded=False):
                 with st.form(key=f"rule_{rule['id']}"):
                     col1, col2, col3 = st.columns(3)
 
@@ -76,6 +79,9 @@ with tab_rules:
                         aspect = st.selectbox("Aspect Ratio", ASPECT_RATIOS, index=ar_idx, key=f"rar_{rule['id']}")
 
                     with col3:
+                        _focus_val = rule.get("focus", "hotel")
+                        _focus_idx = FOCUS_OPTIONS.index(_focus_val) if _focus_val in FOCUS_OPTIONS else 0
+                        focus = st.selectbox("Focus", FOCUS_OPTIONS, index=_focus_idx, format_func=lambda f: FOCUS_LABELS[f], key=f"rfocus_{rule['id']}")
                         min_q = st.slider("Min Quality", 1, 10, value=rule.get("min_quality") or 6, key=f"rq_{rule['id']}")
                         active = st.checkbox("Active", value=is_active, key=f"ract_{rule['id']}")
 
@@ -97,6 +103,7 @@ with tab_rules:
                             "min_quality": min_q,
                             "is_active": active,
                             "notes": notes,
+                            "focus": focus,
                         })
                         st.success("Rule saved.")
                         st.rerun()
@@ -120,6 +127,7 @@ with tab_rules:
         with c3:
             new_ar = st.selectbox("Aspect Ratio", ASPECT_RATIOS, key="new_ar")
             new_mq = st.slider("Min Quality", 1, 10, 6, key="new_mq")
+        new_focus = st.selectbox("Focus", FOCUS_OPTIONS, format_func=lambda f: FOCUS_LABELS[f], key="new_focus")
         new_time = st.text_input("Time", value="10:00", key="new_time")
         new_notes = st.text_input("Notes", key="new_notes")
 
@@ -134,6 +142,7 @@ with tab_rules:
                 "min_quality": new_mq,
                 "is_active": True,
                 "notes": new_notes,
+                "focus": new_focus,
             })
             st.success("New rule added.")
             st.rerun()

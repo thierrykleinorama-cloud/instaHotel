@@ -7,6 +7,7 @@ from typing import Optional
 
 from src.services.caption_generator import (
     generate_captions,
+    generate_destination_captions,
     compute_cost,
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
@@ -82,17 +83,31 @@ def generate_for_slot(
 
     cta_type = cta_override if cta_override else ctx["cta_type"]
 
-    # Generate captions via Claude
-    result = generate_captions(
-        media=media,
-        theme=ctx["theme_name"],
-        season=ctx["season"],
-        cta_type=cta_type,
-        include_image=include_image,
-        image_base64=image_base64,
-        model=model,
-        tone=tone,
-    )
+    # Route to destination or hotel caption generator based on focus
+    focus = entry.get("focus", "hotel")
+
+    if focus == "destination":
+        result = generate_destination_captions(
+            media=media,
+            topic=entry.get("destination_topic") or "",
+            theme=ctx["theme_name"],
+            season=ctx["season"],
+            include_image=include_image,
+            image_base64=image_base64,
+            model=model,
+            tone=tone,
+        )
+    else:
+        result = generate_captions(
+            media=media,
+            theme=ctx["theme_name"],
+            season=ctx["season"],
+            cta_type=cta_type,
+            include_image=include_image,
+            image_base64=image_base64,
+            model=model,
+            tone=tone,
+        )
 
     # Extract caption data
     short = result.get("short", {})
@@ -117,12 +132,14 @@ def generate_for_slot(
         "output_tokens": usage.get("output_tokens", 0),
         "cost_usd": usage.get("cost_usd", 0),
         "generation_params": {
-            "method": "caption_v1",
+            "method": "destination_v1" if focus == "destination" else "caption_v1",
             "include_image": include_image,
             "theme": ctx["theme_name"],
             "season": ctx["season"],
             "cta_type": cta_type,
             "tone": tone,
+            "focus": focus,
+            "destination_topic": entry.get("destination_topic") or None,
         },
         "content_status": "draft",
     }
