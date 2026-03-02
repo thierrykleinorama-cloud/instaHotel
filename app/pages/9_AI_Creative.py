@@ -373,6 +373,19 @@ with tab_video:
                     st.caption(f"Prompt: {params['prompt'][:120]}...")
                 if vj.get("result_url"):
                     st.video(vj["result_url"])
+                    if st.button("Use for music composite", key=f"cs_use_prev_{j}"):
+                        try:
+                            import httpx as _httpx
+                            _resp = _httpx.get(vj["result_url"], timeout=60, follow_redirects=True)
+                            _resp.raise_for_status()
+                            st.session_state["cs_video_result"] = {
+                                "video_bytes": _resp.content,
+                                "duration_sec": params.get("duration", 5),
+                                "aspect_ratio": params.get("aspect_ratio", "9:16"),
+                            }
+                            st.success("Video loaded into session! Go to AI Music → Video + Audio Composite.")
+                        except Exception as _e:
+                            st.error(f"Could not download video: {_e}")
 
 # -------------------------------------------------------
 # Tab 2: Creative Scenarios
