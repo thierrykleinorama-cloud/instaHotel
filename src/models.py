@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 # Valid values for structured fields
 VALID_CATEGORIES = {
-    "chambre", "commun", "exterieur", "gastronomie", "experience"
+    "chambre", "commun", "exterieur", "gastronomie", "experience", "destination"
 }
 
 VALID_SEASONS = {"printemps", "ete", "automne", "hiver", "toute_saison"}
@@ -17,7 +17,7 @@ class VisionAnalysis(BaseModel):
     """Structured output from Claude Vision analysis of a hotel photo/video frame."""
 
     category: str = Field(
-        description="Main category: chambre, commun, exterieur, gastronomie, experience"
+        description="Main category: chambre, commun, exterieur, gastronomie, experience, destination"
     )
     subcategory: str = Field(
         description="Specific area: suite, terrasse, piscine, petit_dejeuner, spa, etc."
@@ -57,6 +57,8 @@ class VisionAnalysis(BaseModel):
                 "exterior": "exterieur", "outdoor": "exterieur", "garden": "exterieur",
                 "food": "gastronomie", "restaurant": "gastronomie", "dining": "gastronomie",
                 "activity": "experience", "event": "experience",
+                "town": "destination", "city": "destination", "beach": "destination",
+                "street": "destination", "village": "destination", "landscape": "destination",
             }
             v = mapping.get(v, v)
         return v

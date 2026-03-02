@@ -25,7 +25,7 @@ from src.services.editorial_queries import (
 sidebar_css()
 page_title("Rules & Themes", "Configure editorial strategy")
 
-CATEGORIES = ["chambre", "commun", "exterieur", "gastronomie", "experience"]
+CATEGORIES = ["chambre", "commun", "exterieur", "gastronomie", "experience", "destination"]
 FORMATS = ["feed", "story", "reel"]
 FOCUS_OPTIONS = ["hotel", "destination"]
 FOCUS_LABELS = {"hotel": "Hotel", "destination": "Destination (Sitges Insider)"}

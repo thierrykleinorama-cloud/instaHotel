@@ -23,16 +23,17 @@ Tu analyses les photos et vidéos de l'Hôtel Noucentista, un hôtel boutique Ar
 L'hôtel a ces espaces principaux :
 - Chambres (suites, chambres doubles, chambres singles) avec décoration Art Nouveau
 - Espaces communs (lobby, salon, terrasse, couloirs, escaliers)
-- Extérieurs (façade, jardin, piscine, vue sur mer, rue)
+- Extérieurs (façade, patio, vue sur mer, rue)
 - Gastronomie (petit-déjeuner, bar, salle à manger)
 - Expériences (spa, events, activités, vues panoramiques)
+- Destination (photos de Sitges : plages, rues, monuments, restaurants, paysages — pas l'hôtel lui-même)
 
 Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans commentaires)."""
 
 USER_PROMPT = """Analyse cette image d'hôtel et retourne un JSON avec exactement ces champs :
 
 {
-  "category": "chambre|commun|exterieur|gastronomie|experience",
+  "category": "chambre|commun|exterieur|gastronomie|experience|destination",
   "subcategory": "nom spécifique de l'espace (ex: suite, terrasse, piscine, petit_dejeuner, spa)",
   "ambiance": ["liste de tags d'ambiance: lumineux, chaleureux, romantique, moderne, art_nouveau, mediterraneen, intime, elegant, naturel, colore"],
   "season": ["printemps|ete|automne|hiver|toute_saison — quand cette photo serait idéale pour Instagram"],
