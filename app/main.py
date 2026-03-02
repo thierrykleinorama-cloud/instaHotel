@@ -12,10 +12,6 @@ if _root not in sys.path:
 
 import streamlit as st
 
-from app.components.ui import sidebar_css, page_title
-from src.database import test_connection
-from src.services.media_queries import fetch_all_media
-
 # Page config
 st.set_page_config(
     page_title="InstaHotel — Media Explorer",
@@ -24,39 +20,29 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-sidebar_css()
+# --- Page definitions with sections ---
+home = st.Page("pages/0_Home.py", title="Home", icon=":material/home:", default=True)
 
-# Sidebar — DB status
-with st.sidebar:
-    st.title("InstaHotel")
-    st.caption("Media Library Explorer")
-    st.divider()
+pg = st.navigation(
+    {
+        "": [home],
+        "Media Library": [
+            st.Page("pages/1_Stats.py", title="Stats", icon=":material/bar_chart:"),
+            st.Page("pages/2_Gallery.py", title="Gallery", icon=":material/photo_library:"),
+            st.Page("pages/3_Image_Details.py", title="Image Details", icon=":material/image:"),
+            st.Page("pages/4_Video_Details.py", title="Video Details", icon=":material/videocam:"),
+        ],
+        "AI Lab": [
+            st.Page("pages/5_AI_Lab.py", title="AI Lab", icon=":material/science:"),
+            st.Page("pages/6_Instagram_Preview.py", title="Instagram Preview", icon=":material/edit_note:"),
+            st.Page("pages/7_AI_Photo_Enhancement.py", title="AI Photo Enhancement", icon=":material/auto_awesome:"),
+            st.Page("pages/8_Photo_to_Video.py", title="Photo to Video", icon=":material/movie_creation:"),
+        ],
+        "Editorial": [
+            st.Page("pages/9_Calendar.py", title="Calendar", icon=":material/calendar_month:"),
+            st.Page("pages/10_Rules.py", title="Rules", icon=":material/tune:"),
+        ],
+    }
+)
 
-    if test_connection():
-        all_media = fetch_all_media()
-        images = [m for m in all_media if m["media_type"] == "image"]
-        videos = [m for m in all_media if m["media_type"] == "video"]
-        st.success(f"DB connected — {len(all_media)} media")
-        col1, col2 = st.columns(2)
-        col1.metric("Images", len(images))
-        col2.metric("Videos", len(videos))
-    else:
-        st.error("Database connection failed")
-
-    st.divider()
-    st.caption("Navigate using pages in the sidebar above.")
-
-# Main page
-page_title("Welcome", "Media Library Explorer")
-
-st.markdown("""
-Use the sidebar to navigate between views:
-
-- **Stats** — Overview, distribution charts, gap alerts
-- **Gallery** — Browse and filter all media
-- **Image Details** — View full-size image and correct AI tags
-- **Video Details** — Browse videos, view scenes, and correct tags
-- **AI Lab** — Test AI transformations on your media
-- **Calendar** — Editorial posting calendar with scored media assignments
-- **Rules** — Configure weekly posting rules and seasonal themes
-""")
+pg.run()

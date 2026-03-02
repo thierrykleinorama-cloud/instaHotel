@@ -1,6 +1,6 @@
 """
 View 5 — AI Lab Hub
-Navigate to AI transformation tools: Captions and Enhancement.
+Navigate to AI transformation tools.
 """
 import sys
 from pathlib import Path
@@ -76,45 +76,35 @@ col_cap, col_enh = st.columns(2)
 
 with col_cap:
     st.markdown("""
-### Captions
+### Instagram Preview
 
 Generate Instagram captions in **ES / EN / FR** with hashtags.
 Choose from multiple AI models, control editorial context
 (theme, season, CTA), **tone variants** (luxe, casual, humorous, romantic),
 and optionally include the image for richer results.
 """)
-    st.page_link("pages/6_AI_Captions.py", label="Open Captions", icon=":material/edit_note:")
+    st.page_link("pages/6_Instagram_Preview.py", label="Open Instagram Preview", icon=":material/edit_note:")
 
 with col_enh:
     st.markdown("""
-### Enhancement
+### AI Photo Enhancement
 
 **Upscale**, **AI retouch**, or **outpaint** your photos
 for better quality. Compare before/after with Claude Vision
 re-analysis and download enhanced images.
 """)
-    st.page_link("pages/7_AI_Enhancement.py", label="Open Enhancement", icon=":material/auto_awesome:")
+    st.page_link("pages/7_AI_Photo_Enhancement.py", label="Open Photo Enhancement", icon=":material/auto_awesome:")
 
 st.divider()
 
-col_creative, col_music = st.columns(2)
+col_video = st.columns(1)[0]
 
-with col_creative:
+with col_video:
     st.markdown("""
-### Creative Studio
+### Photo to Video
 
 **Photo-to-video** (Kling v2.1), **creative scenario generation**
-with Claude, and AI-directed storytelling. Turn hotel photos
-into engaging Reels with cinematic motion prompts.
+with Claude, and **background music** (MusicGen). Three tabs in one workflow:
+generate video, brainstorm scenarios, add music and merge into a final MP4.
 """)
-    st.page_link("pages/9_AI_Creative.py", label="Open Creative Studio", icon=":material/movie_creation:")
-
-with col_music:
-    st.markdown("""
-### AI Music
-
-Generate **background music** for Reels with MusicGen.
-Choose from style presets or describe your own mood.
-**Composite** video + audio into a final MP4 with FFmpeg.
-""")
-    st.page_link("pages/10_AI_Music.py", label="Open AI Music", icon=":material/music_note:")
+    st.page_link("pages/8_Photo_to_Video.py", label="Open Photo to Video", icon=":material/movie_creation:")

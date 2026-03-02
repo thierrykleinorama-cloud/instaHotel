@@ -1,5 +1,5 @@
 """
-View 5b — AI Enhancement
+View 5b — AI Photo Enhancement
 Upscale, AI retouch, or outpaint photos for better quality.
 """
 import io
@@ -37,7 +37,7 @@ from src.services.vision_analyzer import get_raw_response as vision_reanalyze
 
 
 sidebar_css()
-page_title("AI Enhancement", "Upscale, retouch, or outpaint your photos")
+page_title("AI Photo Enhancement", "Upscale, retouch, or outpaint your photos")
 
 st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
 

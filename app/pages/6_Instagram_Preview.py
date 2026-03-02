@@ -1,5 +1,5 @@
 """
-View 5a — AI Captions
+View 5a — Instagram Preview
 Generate Instagram captions in ES/EN/FR with hashtags.
 """
 import sys
@@ -33,7 +33,7 @@ def _download_and_encode(drive_file_id: str) -> str:
 
 
 sidebar_css()
-page_title("AI Captions", "Generate Instagram captions in 3 languages")
+page_title("Instagram Preview", "Generate Instagram captions in 3 languages")
 
 st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
 

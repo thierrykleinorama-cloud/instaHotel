@@ -35,6 +35,7 @@ MEDIA_MIMES = IMAGE_MIMES | VIDEO_MIMES
 
 # Singleton
 _drive_service = None
+_drive_creds = None
 
 
 def _authenticate() -> Credentials:
@@ -76,11 +77,11 @@ def _authenticate() -> Credentials:
 
 
 def get_drive_service():
-    """Get or create Google Drive API service (singleton)."""
-    global _drive_service
-    if _drive_service is None:
-        creds = _authenticate()
-        _drive_service = build("drive", "v3", credentials=creds)
+    """Get or create Google Drive API service. Re-authenticates if creds expired."""
+    global _drive_service, _drive_creds
+    if _drive_service is None or (_drive_creds and _drive_creds.expired):
+        _drive_creds = _authenticate()
+        _drive_service = build("drive", "v3", credentials=_drive_creds)
     return _drive_service
 
 

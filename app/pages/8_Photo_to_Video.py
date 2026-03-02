@@ -1,8 +1,9 @@
 """
-View 9 — Creative Studio
-Photo-to-video generation, creative scenarios, and seasonal variants.
-Test creative transforms before using them in the calendar.
+View 9 — Photo to Video
+Generate videos from photos, brainstorm creative scenarios, and add music.
+Three tabs: Photo-to-Video / Creative Scenarios / Music.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -32,6 +33,9 @@ from src.services.creative_job_queries import (
     fetch_video_jobs,
 )
 from src.services.publisher import upload_to_supabase_storage
+from src.prompts.music_generation import build_music_prompt, AMBIANCE_MUSIC_MAP, CATEGORY_MUSIC_MAP
+from src.services.music_generator import generate_music, MUSIC_MODELS, DEFAULT_MUSIC_MODEL
+from src.services.video_composer import composite_video_audio
 
 
 @st.cache_data(ttl=300)
@@ -40,7 +44,7 @@ def _download_raw(drive_file_id: str) -> bytes:
 
 
 sidebar_css()
-page_title("Creative Studio", "Generate videos, scenarios & seasonal variants")
+page_title("Photo to Video", "Generate videos, scenarios & add music")
 
 st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
 
@@ -106,25 +110,21 @@ with col_preview:
 with col_info:
     st.markdown(f"**{media.get('file_name', '')}**")
 
-    # Core tags
     _cat = media.get("category", "—")
     _subcat = media.get("subcategory", "—")
     _quality = media.get("ig_quality", "—")
     st.markdown(f"**Category:** {_cat} / {_subcat}  \n**Quality:** {_quality}/10")
 
-    # Ambiance & season
     _ambiance = media.get("ambiance", [])
     _season = media.get("season", [])
     _amb_str = ", ".join(_ambiance) if isinstance(_ambiance, list) else str(_ambiance or "—")
     _sea_str = ", ".join(_season) if isinstance(_season, list) else str(_season or "—")
     st.markdown(f"**Ambiance:** {_amb_str}  \n**Season:** {_sea_str}")
 
-    # Elements
     _elements = media.get("elements", [])
     if _elements:
         st.markdown(f"**Elements:** {', '.join(_elements)}")
 
-    # Descriptions
     _desc_fr = media.get("description_fr", "")
     _desc_en = media.get("description_en", "")
     if _desc_fr:
@@ -132,7 +132,6 @@ with col_info:
     if _desc_en:
         st.caption(f"EN: {_desc_en}")
 
-    # Manual notes
     _notes = media.get("manual_notes")
     if _notes:
         st.caption(f"Notes: {_notes}")
@@ -140,7 +139,6 @@ with col_info:
 st.divider()
 
 # --- Restore previous results from DB on page load ---
-# Clear cached results when switching to a different image
 if st.session_state.get("_cs_loaded_media_id") != media_id:
     st.session_state["_cs_loaded_media_id"] = media_id
     st.session_state.pop("cs_scenarios", None)
@@ -156,9 +154,9 @@ if "cs_prev_videos" not in st.session_state:
     st.session_state["cs_prev_videos"] = fetch_video_jobs(media_id, limit=5)
 
 # -------------------------------------------------------
-# Tabs: Photo-to-Video / Creative Scenarios
+# 3 Tabs
 # -------------------------------------------------------
-tab_video, tab_scenarios = st.tabs(["Photo-to-Video", "Creative Scenarios"])
+tab_video, tab_scenarios, tab_music = st.tabs(["Photo-to-Video", "Creative Scenarios", "Music"])
 
 # -------------------------------------------------------
 # Tab 1: Photo-to-Video
@@ -223,7 +221,6 @@ with tab_video:
             key="cs_ai_inc_photo",
             help="Send the actual image to Claude for a richer, more accurate prompt (~$0.01 more)",
         )
-        # Show what will be sent to Claude
         with st.expander("View prompt sent to Claude"):
             from src.prompts.creative_transform import MOTION_PROMPT_SYSTEM, MOTION_PROMPT_TEMPLATE
             _preview_user = MOTION_PROMPT_TEMPLATE.format(
@@ -299,7 +296,6 @@ with tab_video:
     elif "cs_prompt_edit" not in st.session_state:
         st.session_state["cs_prompt_edit"] = default_prompt
 
-    # Editable prompt (always shown — user can tweak any source)
     motion_prompt = st.text_area(
         "Motion Prompt (editable)",
         height=120,
@@ -340,6 +336,8 @@ with tab_video:
                         cost_usd=result["_cost"]["cost_usd"],
                         params={"duration": duration, "aspect_ratio": aspect_ratio, "model": video_model},
                     )
+                    # Refresh prev_videos list
+                    st.session_state["cs_prev_videos"] = fetch_video_jobs(media_id, limit=5)
                 except Exception:
                     pass  # non-critical
             except Exception as e:
@@ -351,17 +349,14 @@ with tab_video:
         st.video(video_result["video_bytes"])
         st.caption(f"Duration: {video_result['duration_sec']}s | AR: {video_result.get('aspect_ratio', '?')}")
 
-        col_dl, col_music = st.columns(2)
-        with col_dl:
-            st.download_button(
-                "Download Video",
-                data=video_result["video_bytes"],
-                file_name=f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel.mp4",
-                mime="video/mp4",
-                key="cs_dl_video",
-            )
-        with col_music:
-            st.page_link(f"pages/10_AI_Music.py?media_id={media_id}", label="Add Music", icon=":material/music_note:")
+        st.download_button(
+            "Download Video",
+            data=video_result["video_bytes"],
+            file_name=f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel.mp4",
+            mime="video/mp4",
+            key="cs_dl_video",
+        )
+        st.info("Switch to the **Music** tab to add background music to this video.")
 
     # Show previously generated videos from DB
     prev_videos = st.session_state.get("cs_prev_videos", [])
@@ -370,14 +365,13 @@ with tab_video:
             for j, vj in enumerate(prev_videos):
                 params = vj.get("params", {})
                 if isinstance(params, str):
-                    import json
                     params = json.loads(params)
                 st.caption(f"**{vj.get('created_at', '?')[:16]}** | ${vj.get('cost_usd', 0):.2f}")
                 if params.get("prompt"):
                     st.caption(f"Prompt: {params['prompt'][:120]}...")
                 if vj.get("result_url"):
                     st.video(vj["result_url"])
-                    if st.button("Use for music composite", key=f"cs_use_prev_{j}"):
+                    if st.button("Use this video", key=f"cs_use_prev_{j}"):
                         try:
                             import httpx as _httpx
                             _resp = _httpx.get(vj["result_url"], timeout=60, follow_redirects=True)
@@ -387,7 +381,7 @@ with tab_video:
                                 "duration_sec": params.get("duration", 5),
                                 "aspect_ratio": params.get("aspect_ratio", "9:16"),
                             }
-                            st.success("Video loaded into session! Go to AI Music → Video + Audio Composite.")
+                            st.rerun()
                         except Exception as _e:
                             st.error(f"Could not download video: {_e}")
 
@@ -443,7 +437,7 @@ with tab_scenarios:
                         params={"brief": creative_brief, "count": scenario_count},
                     )
                 except Exception:
-                    pass  # non-critical — don't block on save failure
+                    pass
             except Exception as e:
                 st.error(f"Scenario generation failed: {e}")
 
@@ -469,3 +463,217 @@ with tab_scenarios:
                     st.session_state["cs_motion_prompt"] = s.get("motion_prompt", "")
                     st.session_state["_cs_prompt_updated"] = True
                     st.info("Prompt loaded! Switch to the Photo-to-Video tab to generate.")
+
+
+# -------------------------------------------------------
+# Tab 3: Music
+# -------------------------------------------------------
+with tab_music:
+    st.markdown("### Add Music to Video")
+    st.caption(
+        "Select a video, generate or upload background music, then merge them into a final MP4."
+    )
+
+    # ---- 1. Select Video ----
+    st.markdown("**1. Select Video**")
+
+    # Current session video (just generated in Tab 1)
+    _music_video_bytes = None
+    _music_video_label = None
+    cs_result = st.session_state.get("cs_video_result")
+    prev_videos_for_music = st.session_state.get("cs_prev_videos", [])
+
+    if cs_result:
+        _music_video_bytes = cs_result["video_bytes"]
+        _music_video_label = f"Current session video ({cs_result.get('duration_sec', '?')}s)"
+        st.video(_music_video_bytes)
+        st.caption(_music_video_label)
+    elif prev_videos_for_music:
+        st.info("No video in current session. Select from previously generated videos below.")
+        for j, vj in enumerate(prev_videos_for_music):
+            params = vj.get("params", {})
+            if isinstance(params, str):
+                params = json.loads(params)
+            if vj.get("result_url"):
+                st.video(vj["result_url"])
+                st.caption(f"{vj.get('created_at', '?')[:16]} | {params.get('prompt', '')[:80]}...")
+                if st.button("Use this video", key=f"mu_use_video_{j}"):
+                    try:
+                        import httpx as _httpx
+                        _resp = _httpx.get(vj["result_url"], timeout=60, follow_redirects=True)
+                        _resp.raise_for_status()
+                        st.session_state["cs_video_result"] = {
+                            "video_bytes": _resp.content,
+                            "duration_sec": params.get("duration", 5),
+                            "aspect_ratio": params.get("aspect_ratio", "9:16"),
+                        }
+                        st.rerun()
+                    except Exception as _e:
+                        st.error(f"Could not download video: {_e}")
+                break  # show first available
+    else:
+        st.warning("No video available. Generate one in the **Photo-to-Video** tab first.")
+
+    st.divider()
+
+    # ---- 2. Select Audio ----
+    st.markdown("**2. Select Audio**")
+
+    audio_source = st.radio(
+        "Audio source",
+        ["Generate music", "Upload audio file"],
+        key="mu_audio_source",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    audio_bytes = None
+    audio_format = "wav"
+
+    if audio_source == "Generate music":
+        # Music generation settings in sidebar
+        with st.sidebar:
+            st.divider()
+            st.subheader("Music Settings")
+
+            music_model = st.selectbox(
+                "Model",
+                list(MUSIC_MODELS.keys()),
+                format_func=lambda k: MUSIC_MODELS[k]["label"],
+                key="mu_model",
+            )
+
+            mu_duration = st.slider("Duration (sec)", 5, 30, 10, key="mu_dur")
+
+            temperature = st.slider(
+                "Creativity", 0.5, 1.5, 1.0, step=0.1, key="mu_temp",
+                help="Higher = more creative/varied, lower = more predictable",
+            )
+
+            mu_model_info = MUSIC_MODELS[music_model]
+            mu_cost = mu_duration * mu_model_info["cost_per_sec"]
+            st.caption(f"Estimated cost: ${mu_cost:.3f}")
+
+        st.caption("Tools: **MusicGen (Meta)** via Replicate")
+
+        # Quick style presets
+        st.markdown("**Quick style presets:**")
+        preset_cols = st.columns(4)
+        presets = [
+            ("Mediterranean", "Mediterranean acoustic guitar, warm breeze, relaxed cafe vibes. Instrumental only."),
+            ("Jazz Lounge", "smooth jazz piano, upright bass, candlelit sophisticated ambiance. Instrumental only."),
+            ("Chill Tropical", "chill tropical house, soft beat, poolside lounge vibes. Instrumental only."),
+            ("Cinematic", "cinematic strings, building piano, epic reveal moment. Instrumental only."),
+        ]
+        for i, (label, preset_prompt) in enumerate(presets):
+            with preset_cols[i]:
+                if st.button(label, key=f"mu_preset_{i}", use_container_width=True):
+                    st.session_state["mu_prompt"] = preset_prompt
+
+        # Ambiance/category style reference
+        with st.expander("Style reference (ambiance & category mappings)"):
+            ref1, ref2 = st.columns(2)
+            with ref1:
+                st.markdown("**By ambiance:**")
+                for k, v in AMBIANCE_MUSIC_MAP.items():
+                    st.caption(f"{k} → {v}")
+            with ref2:
+                st.markdown("**By category:**")
+                for k, v in CATEGORY_MUSIC_MAP.items():
+                    st.caption(f"{k} → {v}")
+
+        # Initialize prompt if not set
+        if "mu_prompt" not in st.session_state:
+            st.session_state["mu_prompt"] = presets[0][1]
+
+        music_prompt = st.text_area(
+            "Music Prompt",
+            height=100,
+            key="mu_prompt",
+            help="Describe the style, mood, instruments. The AI generates instrumental music.",
+        )
+
+        if st.button("Generate Music", type="primary", key="mu_generate"):
+            with st.spinner(f"Generating {mu_duration}s music track..."):
+                try:
+                    mu_result = generate_music(
+                        prompt=music_prompt,
+                        duration=mu_duration,
+                        model=music_model,
+                        temperature=temperature,
+                    )
+                    st.session_state["mu_result"] = mu_result
+                    st.success(f"Music generated! Cost: ${mu_result['_cost']['cost_usd']:.3f}")
+                except Exception as e:
+                    st.error(f"Music generation failed: {e}")
+
+        # Display generated music
+        mu_result = st.session_state.get("mu_result")
+        if mu_result:
+            audio_bytes = mu_result["audio_bytes"]
+            audio_format = mu_result["format"]
+            st.audio(audio_bytes, format=f"audio/{audio_format}")
+            st.caption(f"Duration: {mu_result['duration_sec']}s | Format: {audio_format}")
+
+    else:
+        # Upload audio
+        uploaded_audio = st.file_uploader("Upload WAV or MP3", type=["wav", "mp3"], key="mu_upload_audio")
+        if uploaded_audio:
+            audio_bytes = uploaded_audio.read()
+            audio_format = "mp3" if uploaded_audio.name.endswith(".mp3") else "wav"
+            st.audio(audio_bytes, format=f"audio/{audio_format}")
+
+    st.divider()
+
+    # ---- 3. Merge + Download ----
+    st.markdown("**3. Merge + Download**")
+
+    # Also pick up audio from session if generated earlier
+    if audio_bytes is None:
+        mu_result = st.session_state.get("mu_result")
+        if mu_result:
+            audio_bytes = mu_result["audio_bytes"]
+            audio_format = mu_result["format"]
+
+    # Mix settings
+    mix_c1, mix_c2 = st.columns(2)
+    with mix_c1:
+        volume = st.slider("Music volume", 0.0, 1.0, 0.3, step=0.05, key="mu_vol",
+                           help="0.3 = subtle background, 0.7 = prominent, 1.0 = full volume")
+    with mix_c2:
+        fade_out = st.slider("Fade out (sec)", 0.0, 3.0, 1.5, step=0.5, key="mu_fade",
+                             help="Fade out music before video ends")
+
+    can_merge = _music_video_bytes is not None and audio_bytes is not None
+
+    if not _music_video_bytes:
+        st.caption("Missing video — generate or select one above.")
+    if audio_bytes is None:
+        st.caption("Missing audio — generate music or upload a file above.")
+
+    if st.button("Merge Video + Audio", type="primary", disabled=not can_merge, key="mu_merge"):
+        with st.spinner("Compositing video + audio with FFmpeg..."):
+            try:
+                vc_result = composite_video_audio(
+                    video_bytes=_music_video_bytes,
+                    audio_bytes=audio_bytes,
+                    volume=volume,
+                    fade_out_sec=fade_out,
+                    audio_format=audio_format,
+                )
+                st.session_state["mu_composite_result"] = vc_result
+                st.success("Video + audio merged!")
+            except Exception as e:
+                st.error(f"Compositing failed: {e}")
+
+    # Display merged result
+    vc_result = st.session_state.get("mu_composite_result")
+    if vc_result:
+        st.video(vc_result["video_bytes"])
+        st.download_button(
+            "Download Final Video",
+            data=vc_result["video_bytes"],
+            file_name=f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel_music.mp4",
+            mime="video/mp4",
+            key="mu_dl_final",
+        )
