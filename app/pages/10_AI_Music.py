@@ -128,45 +128,69 @@ with tab_composite:
         "Upload or use a generated video and audio track to create a final MP4 with background music."
     )
 
-    # Video source
+    # Video source — session, previously generated, or upload
     st.markdown("**Video source:**")
-    video_source = st.radio("Source", ["Upload file", "From Creative Studio (session)"], key="vc_vsource", horizontal=True)
-
     video_bytes = None
-    if video_source == "Upload file":
-        uploaded_video = st.file_uploader("Upload MP4 video", type=["mp4"], key="vc_upload_v")
-        if uploaded_video:
-            video_bytes = uploaded_video.read()
-            st.video(video_bytes)
+    cs_result = st.session_state.get("cs_video_result")
+    if cs_result:
+        video_bytes = cs_result["video_bytes"]
+        st.video(video_bytes)
+        st.caption(f"From Creative Studio: {cs_result.get('duration_sec', '?')}s")
     else:
-        cs_result = st.session_state.get("cs_video_result")
-        if cs_result:
-            video_bytes = cs_result["video_bytes"]
-            st.video(video_bytes)
-            st.caption(f"From Creative Studio: {cs_result.get('duration_sec', '?')}s")
-        else:
-            st.info("No video in session. Generate one in the Creative Studio first.")
+        # Try loading from DB (previously generated videos)
+        from src.services.creative_job_queries import fetch_video_jobs
+        _qp_media = st.query_params.get("media_id")
+        if _qp_media:
+            _prev = fetch_video_jobs(_qp_media, limit=3)
+            if _prev:
+                st.markdown(f"**Previously generated videos ({len(_prev)}):**")
+                for _j, _vj in enumerate(_prev):
+                    _params = _vj.get("params", {})
+                    if isinstance(_params, str):
+                        import json
+                        _params = json.loads(_params)
+                    if _vj.get("result_url"):
+                        st.video(_vj["result_url"])
+                        st.caption(f"{_vj.get('created_at', '?')[:16]} | {_params.get('prompt', '')[:80]}...")
+                        if st.button("Use this video", key=f"vc_use_prev_{_j}"):
+                            import httpx as _httpx
+                            try:
+                                _r = _httpx.get(_vj["result_url"], timeout=60, follow_redirects=True)
+                                _r.raise_for_status()
+                                st.session_state["cs_video_result"] = {
+                                    "video_bytes": _r.content,
+                                    "duration_sec": _params.get("duration", 5),
+                                    "aspect_ratio": _params.get("aspect_ratio", "9:16"),
+                                }
+                                video_bytes = _r.content
+                                st.rerun()
+                            except Exception as _e:
+                                st.error(f"Could not download: {_e}")
+                        break  # show only first
+        if not video_bytes:
+            st.info("No video in session. Load one from AI Creative or upload below.")
+    uploaded_video = st.file_uploader("Or upload MP4 video", type=["mp4"], key="vc_upload_v")
+    if uploaded_video:
+        video_bytes = uploaded_video.read()
+        st.video(video_bytes)
 
+    # Audio source — use session if available, otherwise upload
     st.markdown("**Audio source:**")
-    audio_source = st.radio("Source", ["Upload file", "Generated music (session)"], key="vc_asource", horizontal=True)
-
     audio_bytes = None
     audio_format = "wav"
-    if audio_source == "Upload file":
-        uploaded_audio = st.file_uploader("Upload audio", type=["wav", "mp3"], key="vc_upload_a")
-        if uploaded_audio:
-            audio_bytes = uploaded_audio.read()
-            audio_format = "mp3" if uploaded_audio.name.endswith(".mp3") else "wav"
-            st.audio(audio_bytes, format=f"audio/{audio_format}")
+    mu_result = st.session_state.get("mu_result")
+    if mu_result:
+        audio_bytes = mu_result["audio_bytes"]
+        audio_format = mu_result["format"]
+        st.audio(audio_bytes, format=f"audio/{audio_format}")
+        st.caption(f"Generated music: {mu_result['duration_sec']}s")
     else:
-        mu_result = st.session_state.get("mu_result")
-        if mu_result:
-            audio_bytes = mu_result["audio_bytes"]
-            audio_format = mu_result["format"]
-            st.audio(audio_bytes, format=f"audio/{audio_format}")
-            st.caption(f"Generated music: {mu_result['duration_sec']}s")
-        else:
-            st.info("No music in session. Generate some in the Generate Music tab first.")
+        st.info("No music in session. Generate some in the Generate Music tab first.")
+    uploaded_audio = st.file_uploader("Or upload audio", type=["wav", "mp3"], key="vc_upload_a")
+    if uploaded_audio:
+        audio_bytes = uploaded_audio.read()
+        audio_format = "mp3" if uploaded_audio.name.endswith(".mp3") else "wav"
+        st.audio(audio_bytes, format=f"audio/{audio_format}")
 
     # Composite settings
     st.markdown("**Mix settings:**")
