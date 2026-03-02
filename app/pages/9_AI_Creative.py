@@ -361,7 +361,7 @@ with tab_video:
                 key="cs_dl_video",
             )
         with col_music:
-            st.page_link("pages/10_AI_Music.py", label="Add Music", icon=":material/music_note:")
+            st.page_link(f"pages/10_AI_Music.py?media_id={media_id}", label="Add Music", icon=":material/music_note:")
 
     # Show previously generated videos from DB
     prev_videos = st.session_state.get("cs_prev_videos", [])
