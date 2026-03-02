@@ -210,6 +210,7 @@ with tab_video:
             "Claude analyzes the photo + metadata and writes a cinematic motion prompt "
             "tailored to the duration and format. You can add a creative brief to guide the style."
         )
+        st.caption("Tools: **Claude Sonnet** (prompt writing) → **Kling v2.1** (video generation)")
         ai_brief = st.text_input(
             "Creative brief (optional)",
             placeholder="e.g., 'dreamy morning light', 'dramatic reveal', 'cats walking through the scene'",
@@ -263,6 +264,7 @@ with tab_video:
         default_prompt = st.session_state.get("cs_motion_prompt", auto_prompt)
 
     elif prompt_method.startswith("From scenario"):
+        st.caption("Tools: **Claude Sonnet** (scenario brainstorming) → **Kling v2.1** (video generation)")
         scenario_prompt = st.session_state.get("cs_motion_prompt")
         if scenario_prompt and scenario_prompt != auto_prompt:
             default_prompt = scenario_prompt
@@ -272,6 +274,7 @@ with tab_video:
             default_prompt = auto_prompt
 
     elif prompt_method.startswith("Manual"):
+        st.caption("Tools: **Kling v2.1** (video generation only — you write the prompt)")
         default_prompt = st.session_state.get("cs_motion_prompt", "")
         if not default_prompt:
             st.info(
@@ -282,6 +285,7 @@ with tab_video:
             )
     else:
         # Auto
+        st.caption("Tools: **Kling v2.1** (video generation only — prompt from metadata dictionary, no AI)")
         default_prompt = auto_prompt
         st.caption(
             f"Auto-generated from metadata: ambiance ({', '.join(media.get('ambiance', []) or ['—'])}) "
