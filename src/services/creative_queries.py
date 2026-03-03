@@ -6,6 +6,7 @@ from typing import Optional
 
 from src.database import (
     get_supabase,
+    TABLE_MEDIA_LIBRARY,
     TABLE_GENERATED_SCENARIOS,
     TABLE_GENERATED_MUSIC,
     TABLE_CREATIVE_JOBS,
@@ -163,6 +164,74 @@ def update_content_feedback(content_id: str, feedback: str = None, rating: int =
 # -----------------------------------------------------------
 # Feedback aggregation (for prompt improvement)
 # -----------------------------------------------------------
+
+# -----------------------------------------------------------
+# Draft / review fetchers (for Drafts Review page)
+# -----------------------------------------------------------
+
+def fetch_draft_scenarios(status: str = "draft", limit: int = 100) -> list[dict]:
+    """Fetch scenarios filtered by status. Default: drafts (unreviewed)."""
+    client = get_supabase()
+    query = (
+        client.table(TABLE_GENERATED_SCENARIOS)
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if status and status != "all":
+        query = query.eq("status", status)
+    return query.execute().data
+
+
+def fetch_draft_music(status: str = "draft", limit: int = 100) -> list[dict]:
+    """Fetch music tracks filtered by status. Default: drafts (unreviewed)."""
+    client = get_supabase()
+    query = (
+        client.table(TABLE_GENERATED_MUSIC)
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if status and status != "all":
+        query = query.eq("status", status)
+    return query.execute().data
+
+
+def fetch_draft_videos(status: str = "unreviewed", limit: int = 100) -> list[dict]:
+    """Fetch video jobs for review.
+
+    Videos use 'completed' status (no 'draft'). 'unreviewed' = completed with no feedback.
+    Also supports 'accepted', 'rejected', 'all'.
+    """
+    client = get_supabase()
+    query = (
+        client.table(TABLE_CREATIVE_JOBS)
+        .select("*")
+        .eq("job_type", "photo_to_video")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if status == "unreviewed":
+        query = query.eq("status", "completed").is_("feedback", "null")
+    elif status and status != "all":
+        query = query.eq("status", status)
+    return query.execute().data
+
+
+def fetch_media_names(media_ids: list[str]) -> dict[str, str]:
+    """Return {media_id: file_name} for a list of media IDs."""
+    if not media_ids:
+        return {}
+    client = get_supabase()
+    unique_ids = list(set(media_ids))
+    result = (
+        client.table(TABLE_MEDIA_LIBRARY)
+        .select("id,file_name")
+        .in_("id", unique_ids)
+        .execute()
+    )
+    return {r["id"]: r["file_name"] for r in result.data}
+
 
 def fetch_rejected_scenarios(limit: int = 50) -> list[dict]:
     """Fetch recently rejected scenarios with feedback, for prompt improvement."""

@@ -2,6 +2,7 @@
 
 # AI
 anthropic>=0.80
+google-genai>=1.0.0
 
 # Database
 supabase>=2.3.0

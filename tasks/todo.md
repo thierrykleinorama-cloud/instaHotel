@@ -45,7 +45,7 @@
 - [x] Session cost tracker
 - [x] Outpaint padding preview
 - [x] Fix max_quality slider in media_selector.py
-- [ ] **User testing**: test with real STABILITY_API_KEY + REPLICATE_API_TOKEN
+- [→] **User testing**: → see BACKLOG
 
 ## Phase 3 : Content Assembly (Sem. 3) — COMPLETE
 - [x] Table: generated_content (schema_phase3.sql — migrated)
@@ -96,14 +96,7 @@
 - [x] **Prerequisites** (manual, user): Meta Developer App, FB↔IG link, long-lived token, `media-publish` Supabase Storage bucket
 
 ### Phase 5b : Full Automation (Sem. 5)
-**Goal**: Hands-off publishing pipeline.
-
-- [ ] Auto-push validated slots to Postiz queue (no manual export)
-- [ ] Optimal posting times (Instagram Graph API insights)
-- [ ] Table: `post_performance` (engagement metrics)
-- [ ] Feedback loop: pull metrics 48h after publication
-- [ ] Dashboard: publication stats, best performing content
-- [ ] Replicabilite multi-hotel (Malaga)
+**Goal**: Hands-off publishing pipeline. → see BACKLOG
 
 ---
 
@@ -116,12 +109,7 @@
 - [x] Tone selector in Calendar: batch gen + per-slot gen + per-slot regen
 - [x] Stored in `generation_params.tone` JSONB via `content_generator.py`
 
-### Phase 2.5B : Batch Enhancement (Sem. 6)
-- [ ] Batch uplift ~94 low-quality media (ig_quality < 5)
-- [ ] Re-run Claude Vision, only keep if quality score increases by 2+ points
-- [ ] Add DB columns: enhanced_url, enhanced_quality, enhancement_method
-- [ ] Upload enhanced versions to Google Drive subfolder
-- [ ] Auto-retarget: outpaint photos to 4:5 (feed) and 9:16 (story/reel)
+### Phase 2.5B : Batch Enhancement (Sem. 6) → see BACKLOG
 
 ### Phase 2.5C : Creative Transforms (Sem. 7) — PARTIAL
 - [x] **DB Migration**: `schema_phase3c_25c.sql` — parent_media_id, generation_method, creative_jobs table
@@ -136,11 +124,47 @@
 - [x] **Prompt quality fix**: action > camera movement, stay in frame, AI-generated as default
 - [x] **Kling model ID fix**: `kwaivgi/kling-v2.1` + `start_image` param
 - [x] **UI tested end-to-end** via Playwright: scenario gen + video gen + video player + download
-- [ ] **Seasonal & Element Variants** — summer → winter, add elements, object removal
-- [ ] **AI Humor** — dedicated humor scenario mode
-- [ ] **Carousel** — group related media into multi-image posts
-- [ ] **Veo 3 integration** — add as second video model option (Google AI Studio API)
-- [ ] **End image support** — Kling `end_image` param for transitions (show real hotel facade)
+- [→] Remaining items → see BACKLOG
+
+### Recently Completed (2026-03-03)
+- [x] **Accept/Reject UI** — Inline in Photo-to-Video + dedicated Drafts Review page (11_Drafts_Review.py)
+- [x] **Pool/garden cleanup** — removed `piscine` from maps, renamed `jardin` → `patio`
+- [x] **Unique Drive filenames** — timestamps appended to all uploaded media names
+- [x] **Drive folder strategy** — no /rejected folder; rejected = DB flag only; all media stays in same folder
+
+---
+
+## BACKLOG — Single canonical list of all open work
+**RULE: This is the ONE place for all TODOs. Always read this before proposing next steps.**
+
+### Content Production (enable batch content creation)
+- [ ] **Batch calendar creative workflow** — Generate scenarios for all calendar slots in one click → review/accept/reject via Drafts Review → generate videos → music → assemble. Long-running batch pattern.
+- [ ] **Batch photo enhancement (Phase 2.5B)** — Bulk-enhance ~94 low-quality media (ig_quality < 5). Re-run Claude Vision, keep if +2 improvement. Add DB columns: enhanced_url, enhanced_quality, enhancement_method. Upload to `Generated/Enhanced/` in Drive. Folder already created.
+- [ ] **Auto-retarget** — Outpaint photos to 4:5 (feed) and 9:16 (story/reel) in batch
+
+### Video & Creative
+- [x] **Veo 3.1 integration (B1)** — Google Veo 3.1 Fast/Standard as second video model. `veo_generator.py` service, `VIDEO_MODELS` dispatch, dedicated AI Lab page `12_Veo_Video.py`. Duration 4/6/8s, resolution 720p/1080p. Needs `GOOGLE_GENAI_API_KEY` in `.env`.
+- [x] **Carousel support (B2)** — Multi-image IG posts. `carousel_drafts` DB table, `carousel_queries.py` CRUD, `publisher.py` carousel functions, `13_Carousel_Builder.py` AI Lab page with multi-image picker, reorder, preview with dots/arrows, save/publish.
+- [ ] **End image support** — Show hotel facade at end of Kling videos (needs `end_image` param for transitions)
+- [ ] **Seasonal & Element Variants** — Transform photos to different seasons (summer → winter), add elements, object removal. Placeholder prompt exists: `SEASONAL_TEMPLATE` in creative_transform.py but not wired.
+- [ ] **AI Humor** — Dedicated humor scenario mode for creative transforms
+
+### Publishing & Analytics (Phase 5b)
+- [ ] **Optimal posting times** — Instagram Graph API insights for best times to post
+- [ ] **Post performance table** — `post_performance` table (engagement metrics)
+- [ ] **Feedback loop** — Pull IG metrics 48h after publication, feed back into scoring
+- [ ] **Publication dashboard** — Stats, best performing content, trends
+- [ ] **Auto-push validated slots** — No manual export, direct queue
+- [ ] **Replicabilite multi-hotel** — Malaga property support
+
+### Prompts & Content Quality
+- [ ] **Translate prompts to English** — Most prompts in `/src/prompts/` are in French (caption_generation, creative_transform, tone_variants). destination_content is already English.
+- [ ] **Separate HOTEL_CONTEXT** — Split into (1) hotel identity/facts and (2) "what works on Instagram" ideas list. Currently both in `HOTEL_CONTEXT` in `src/prompts/creative_transform.py`.
+- [ ] **Enrich DESTINATION_CONTEXT** — Add owner's specific restaurant recommendations, favorite spots to `src/prompts/destination_content.py` (placeholder currently)
+- [ ] **Sitges Knowledge Base page** — Streamlit admin page to manage Sitges knowledge dynamically instead of static `DESTINATION_CONTEXT`
+
+### Testing & Maintenance
+- [ ] **User testing Phase 2.5A** — Test AI enhancement with real STABILITY_API_KEY + REPLICATE_API_TOKEN
 
 ---
 
@@ -158,10 +182,9 @@ THEN ENRICH:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Step 1: PREPROCESS          Step 2: CREATIVE TRANSFORM     Step 3: RETARGET        Step 4: CONTENT ASSEMBLY
-✅ AI Retouch               ✅ Photo-to-video (Kling)      ✅ Outpaint              ✅ AI Captions + CTA
+✅ AI Retouch               ✅ Photo-to-video (Kling+Veo)  ✅ Outpaint              ✅ AI Captions + CTA
 ✅ Upscale                  ✅ Creative scenarios (Claude)  🔜 Story/Reel crop      ✅ IG Post Preview (3b)
 🔜 Batch enhance (2.5B)    ✅ Background music (MusicGen)  🔜 Platform adapt       ✅ Tone variants (3c)
-🔜 Object removal          ✅ Video+Audio composite                                🔜 AI Humor
-                            🔜 Seasonal variants                                    🔜 Carousel
-                            🔜 Veo 3 / Sora 2
+🔜 Object removal          ✅ Video+Audio composite                                ✅ Carousel
+                            🔜 Seasonal variants                                    🔜 AI Humor
 ```

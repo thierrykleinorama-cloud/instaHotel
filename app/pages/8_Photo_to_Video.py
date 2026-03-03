@@ -5,6 +5,7 @@ Three tabs: Photo-to-Video / Creative Scenarios / Music.
 """
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 _root = str(Path(__file__).resolve().parent.parent.parent)
@@ -24,6 +25,8 @@ from src.services.creative_transform import (
     photo_to_video,
     VIDEO_MODELS,
     DEFAULT_VIDEO_MODEL,
+    get_model_durations,
+    estimate_video_cost,
 )
 from src.prompts.creative_transform import HOTEL_CONTEXT
 from src.services.creative_job_queries import (
@@ -32,6 +35,13 @@ from src.services.creative_job_queries import (
     save_music_job,
     fetch_latest_scenarios,
     fetch_video_jobs,
+)
+from src.services.creative_queries import (
+    fetch_scenarios_for_media,
+    fetch_music_for_media,
+    update_scenario_feedback,
+    update_music_feedback,
+    update_job_feedback,
 )
 from src.services.publisher import upload_to_supabase_storage
 from src.prompts.music_generation import build_music_prompt, AMBIANCE_MUSIC_MAP, CATEGORY_MUSIC_MAP
@@ -42,6 +52,42 @@ from src.services.video_composer import composite_video_audio
 @st.cache_data(ttl=300)
 def _download_raw(drive_file_id: str) -> bytes:
     return download_file_bytes(drive_file_id)
+
+
+def _render_feedback(item_id: str, item_type: str, key_prefix: str,
+                     current_status: str = "draft"):
+    """Render inline accept/reject + rating + feedback.
+
+    item_type: 'scenario' | 'music' | 'video'
+    """
+    already_reviewed = current_status in ("accepted", "rejected")
+    if already_reviewed:
+        _colors = {"accepted": "green", "rejected": "red"}
+        st.markdown(f":{_colors.get(current_status, 'gray')}[{current_status.upper()}]")
+
+    rating = st.slider("Rating", 1, 5, 3, key=f"{key_prefix}_r_{item_id}")
+    fb = st.text_input("Feedback", key=f"{key_prefix}_fb_{item_id}",
+                       placeholder="Optional — why reject?")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Accept", key=f"{key_prefix}_ok_{item_id}", use_container_width=True):
+            _apply_feedback(item_id, item_type, "accepted", fb, rating)
+            st.rerun()
+    with c2:
+        if st.button("Reject", key=f"{key_prefix}_no_{item_id}", use_container_width=True):
+            _apply_feedback(item_id, item_type, "rejected", fb, rating)
+            st.rerun()
+
+
+def _apply_feedback(item_id, item_type, status, feedback, rating):
+    fb = feedback if feedback else None
+    if item_type == "scenario":
+        update_scenario_feedback(item_id, status, feedback=fb, rating=rating)
+    elif item_type == "music":
+        update_music_feedback(item_id, status, feedback=fb, rating=rating)
+    elif item_type == "video":
+        update_job_feedback(item_id, status=status, feedback=fb, rating=rating)
 
 
 sidebar_css()
@@ -181,11 +227,16 @@ with tab_video:
             key="cs_vmodel",
         )
 
-        duration = st.select_slider("Duration (sec)", [5, 10], value=5, key="cs_dur")
-        aspect_ratio = st.selectbox("Aspect Ratio", ["9:16", "16:9", "1:1"], key="cs_ar")
+        # Duration options depend on the model
+        dur_options = get_model_durations(video_model)
+        duration = st.select_slider("Duration (sec)", dur_options, value=dur_options[0], key="cs_dur")
 
-        model_info = VIDEO_MODELS[video_model]
-        cost = model_info["cost_5s"] if duration <= 5 else model_info["cost_10s"]
+        ar_options = ["9:16", "16:9", "1:1"]
+        if VIDEO_MODELS[video_model].get("provider") == "google":
+            ar_options = ["9:16", "16:9"]  # Veo doesn't support 1:1
+        aspect_ratio = st.selectbox("Aspect Ratio", ar_options, key="cs_ar")
+
+        cost = estimate_video_cost(video_model, duration)
         st.caption(f"Estimated cost: ${cost:.2f}")
 
     # --- Prompt source selector ---
@@ -328,7 +379,9 @@ with tab_video:
                 st.success(f"Video generated! Cost: ${result['_cost']['cost_usd']:.2f}")
                 # Persist video to Storage + Drive + DB
                 try:
-                    fname = f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel.mp4"
+                    _ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    _stem = media.get("file_name", "video").rsplit(".", 1)[0][:40]
+                    fname = f"{_stem}_reel_{_ts}.mp4"
                     video_url = upload_to_supabase_storage(result["video_bytes"], fname, "video/mp4")
                     # Upload to Google Drive for permanent storage
                     _drive_fid = None
@@ -341,11 +394,13 @@ with tab_video:
                         st.caption(f"Saved to Drive: Generated/Videos/{fname}")
                     except Exception as _de:
                         st.warning(f"Drive upload failed (video saved to Supabase): {_de}")
+                    _provider = VIDEO_MODELS[video_model].get("provider", "replicate")
                     save_video_job(
                         source_media_id=media_id,
                         video_url=video_url,
                         prompt=motion_prompt,
                         cost_usd=result["_cost"]["cost_usd"],
+                        provider=_provider,
                         params={"duration": duration, "aspect_ratio": aspect_ratio, "model": video_model},
                         drive_file_id=_drive_fid,
                     )
@@ -397,6 +452,10 @@ with tab_video:
                             st.rerun()
                         except Exception as _e:
                             st.error(f"Could not download video: {_e}")
+                    # Inline accept/reject
+                    if vj.get("id"):
+                        _render_feedback(vj["id"], "video", "pv_vid",
+                                         current_status=vj.get("status", "completed"))
 
 # -------------------------------------------------------
 # Tab 2: Creative Scenarios
@@ -454,11 +513,18 @@ with tab_scenarios:
             except Exception as e:
                 st.error(f"Scenario generation failed: {e}")
 
-    # Display scenarios
-    scenarios = st.session_state.get("cs_scenarios", {}).get("scenarios", [])
-    if scenarios:
-        for i, s in enumerate(scenarios):
-            with st.expander(f"{s.get('mood', '?').upper()} — {s.get('title', f'Scenario {i+1}')}", expanded=i == 0):
+    # Display scenarios (from DB rows with IDs for feedback)
+    db_scenarios = fetch_scenarios_for_media(media_id)
+    if db_scenarios:
+        st.markdown(f"**{len(db_scenarios)} scenarios** for this photo:")
+        for i, s in enumerate(db_scenarios):
+            sc_status = s.get("status", "draft")
+            _sc_colors = {"draft": "blue", "accepted": "green", "rejected": "red"}
+            _sc_color = _sc_colors.get(sc_status, "gray")
+            with st.expander(
+                f":{_sc_color}[{sc_status.upper()}] {s.get('mood', '?').upper()} — {s.get('title', f'Scenario {i+1}')}",
+                expanded=(i == 0 and sc_status == "draft"),
+            ):
                 st.markdown(f"**{s.get('description', '')}**")
                 st.caption(f"Mood: {s.get('mood', '?')}")
 
@@ -466,16 +532,19 @@ with tab_scenarios:
                     "Motion prompt",
                     value=s.get("motion_prompt", ""),
                     height=80,
-                    key=f"cs_sc_prompt_{i}",
+                    key=f"cs_sc_prompt_{s['id']}",
                 )
 
                 if s.get("caption_hook"):
                     st.markdown(f"Caption hook: *{s['caption_hook']}*")
 
-                if st.button("Use this prompt for video", key=f"cs_use_scenario_{i}"):
+                if st.button("Use this prompt for video", key=f"cs_use_scenario_{s['id']}"):
                     st.session_state["cs_motion_prompt"] = s.get("motion_prompt", "")
                     st.session_state["_cs_prompt_updated"] = True
                     st.info("Prompt loaded! Switch to the Photo-to-Video tab to generate.")
+
+                # Inline accept/reject
+                _render_feedback(s["id"], "scenario", "pv_sc", current_status=sc_status)
 
 
 # -------------------------------------------------------
@@ -621,7 +690,9 @@ with tab_music:
                     try:
                         _mu_ext = mu_result.get("format", "wav")
                         _mu_mime = "audio/mpeg" if _mu_ext == "mp3" else f"audio/{_mu_ext}"
-                        _mu_fname = f"{media.get('file_name', 'music').rsplit('.', 1)[0]}_music.{_mu_ext}"
+                        _mu_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        _mu_stem = media.get("file_name", "music").rsplit(".", 1)[0][:40]
+                        _mu_fname = f"{_mu_stem}_music_{_mu_ts}.{_mu_ext}"
                         _mu_drive_fid = None
                         try:
                             folders = ensure_generated_folders()
@@ -652,6 +723,23 @@ with tab_music:
             audio_format = mu_result["format"]
             st.audio(audio_bytes, format=f"audio/{audio_format}")
             st.caption(f"Duration: {mu_result['duration_sec']}s | Format: {audio_format}")
+
+        # Show previously generated music with accept/reject
+        db_music = fetch_music_for_media(media_id)
+        if db_music:
+            with st.expander(f"Previous music for this photo ({len(db_music)})", expanded=not mu_result):
+                for mi, mu_track in enumerate(db_music):
+                    mu_status = mu_track.get("status", "draft")
+                    _mu_colors = {"draft": "blue", "accepted": "green", "rejected": "red"}
+                    _mu_color = _mu_colors.get(mu_status, "gray")
+                    st.markdown(f"**:{_mu_color}[{mu_status.upper()}]** {mu_track.get('created_at', '?')[:16]}")
+                    if mu_track.get("prompt"):
+                        st.caption(f"Prompt: {mu_track['prompt'][:100]}")
+                    if mu_track.get("audio_url"):
+                        st.audio(mu_track["audio_url"])
+                    _render_feedback(mu_track["id"], "music", "pv_mu", current_status=mu_status)
+                    if mi < len(db_music) - 1:
+                        st.divider()
 
     else:
         # Upload audio
@@ -703,7 +791,9 @@ with tab_music:
                 st.success("Video + audio merged!")
                 # Upload composite to Drive
                 try:
-                    _comp_fname = f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel_music.mp4"
+                    _comp_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    _comp_stem = media.get("file_name", "video").rsplit(".", 1)[0][:40]
+                    _comp_fname = f"{_comp_stem}_reel_music_{_comp_ts}.mp4"
                     folders = ensure_generated_folders()
                     _comp_drive = upload_file_to_drive(
                         vc_result["video_bytes"], _comp_fname, "video/mp4", folders["videos"],

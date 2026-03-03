@@ -242,6 +242,117 @@ def get_post_permalink(ig_post_id: str, token: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
+# Carousel publishing
+# ---------------------------------------------------------------------------
+
+def create_carousel_child(
+    account_id: str,
+    token: str,
+    media_url: str,
+) -> str:
+    """Create one carousel child container. Returns child_container_id."""
+    url = f"{GRAPH_BASE}/{account_id}/media"
+    data = {
+        "image_url": media_url,
+        "is_carousel_item": "true",
+        "access_token": token,
+    }
+    resp = httpx.post(url, data=data, timeout=60)
+    if resp.status_code != 200:
+        error = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text[:300]
+        raise RuntimeError(f"Carousel child creation failed ({resp.status_code}): {error}")
+    body = resp.json()
+    child_id = body.get("id")
+    if not child_id:
+        raise RuntimeError(f"No container ID for carousel child: {body}")
+    return child_id
+
+
+def create_carousel_container(
+    account_id: str,
+    token: str,
+    children_ids: list[str],
+    caption: str,
+    scheduled_publish_time: Optional[int] = None,
+) -> str:
+    """Create a carousel parent container. Returns container_id."""
+    url = f"{GRAPH_BASE}/{account_id}/media"
+    data = {
+        "media_type": "CAROUSEL",
+        "children": ",".join(children_ids),
+        "caption": caption,
+        "access_token": token,
+    }
+    if scheduled_publish_time:
+        data["published"] = "false"
+        data["scheduled_publish_time"] = str(scheduled_publish_time)
+
+    resp = httpx.post(url, data=data, timeout=60)
+    if resp.status_code != 200:
+        error = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text[:300]
+        raise RuntimeError(f"Carousel container creation failed ({resp.status_code}): {error}")
+    body = resp.json()
+    container_id = body.get("id")
+    if not container_id:
+        raise RuntimeError(f"No container ID for carousel: {body}")
+    return container_id
+
+
+def publish_carousel(
+    image_urls: list[str],
+    caption: str,
+    scheduled_publish_time: Optional[int] = None,
+) -> dict:
+    """Full carousel publish flow: children → carousel → poll → publish.
+
+    Args:
+        image_urls: list of public URLs for each carousel image (2-10).
+        caption: the full caption text.
+        scheduled_publish_time: optional Unix timestamp for scheduling.
+
+    Returns: {success, ig_post_id, ig_permalink, status}
+    """
+    token = _get_ig_token()
+    account_id = _get_ig_account_id()
+
+    if len(image_urls) < 2:
+        raise ValueError("Carousel requires at least 2 images")
+    if len(image_urls) > 10:
+        raise ValueError("Carousel supports at most 10 images")
+
+    # Step 1: Create child containers
+    children_ids = []
+    for img_url in image_urls:
+        child_id = create_carousel_child(account_id, token, img_url)
+        children_ids.append(child_id)
+        time.sleep(1)  # Brief pause between child creations
+
+    # Step 2: Create carousel container
+    container_id = create_carousel_container(
+        account_id, token, children_ids, caption, scheduled_publish_time,
+    )
+
+    # Step 3: Poll until ready
+    poll_container_status(container_id, token, max_wait=120)
+
+    # Step 4: Publish
+    publish_result = publish_container(account_id, token, container_id)
+    ig_post_id = publish_result.get("id")
+
+    # Step 5: Get permalink
+    permalink = get_post_permalink(ig_post_id, token) if ig_post_id else None
+
+    status = "scheduled" if scheduled_publish_time else "published"
+
+    return {
+        "success": True,
+        "ig_post_id": ig_post_id,
+        "ig_permalink": permalink,
+        "status": status,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Caption resolution
 # ---------------------------------------------------------------------------
 

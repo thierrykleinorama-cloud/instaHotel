@@ -25,12 +25,11 @@ AMBIANCE_MUSIC_MAP = {
 
 CATEGORY_MUSIC_MAP = {
     "chambre": "soft piano, warm ambient pads, cozy bedroom atmosphere",
-    "piscine": "chill tropical house, soft beat, poolside lounge vibes",
     "exterieur": "Mediterranean acoustic guitar, warm breeze atmosphere",
     "terrasse": "bossa nova, light percussion, outdoor cafe in the sun",
     "salle_bain": "spa ambient, water sounds, peaceful minimalist piano",
     "restaurant": "jazz trio, upright bass, candlelit dinner atmosphere",
-    "jardin": "acoustic guitar, birdsong elements, garden serenity",
+    "patio": "acoustic guitar, birdsong elements, Mediterranean patio serenity",
     "reception": "elegant lobby music, soft jazz piano, welcoming warmth",
     "architecture": "cinematic ambient, subtle reverb piano, awe and wonder",
     "destination": "Mediterranean world music, acoustic guitar, travel adventure",

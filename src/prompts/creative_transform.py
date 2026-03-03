@@ -132,12 +132,11 @@ AMBIANCE_MOTION_MAP = {
 
 CATEGORY_MOTION_MAP = {
     "chambre": "slow dolly-in toward the bed, curtains swaying gently, morning light shifting across linens",
-    "piscine": "slow crane up from water surface, light reflections rippling, palm fronds swaying",
     "exterieur": "cinematic pan across the facade, clouds drifting, shadows moving",
     "terrasse": "smooth tracking shot along the terrace, breeze moving tablecloths and plants",
     "salle_bain": "push-in through steam wisps, water droplets catching light",
     "restaurant": "dolly past the table setting, candle flames flickering, ambient glow",
-    "jardin": "slow orbit around garden, flowers swaying, butterflies or birds",
+    "patio": "slow orbit around patio, Mediterranean plants swaying, dappled sunlight",
     "reception": "wide dolly forward into the lobby, Art Nouveau details revealed progressively",
     "architecture": "cinematic tilt up revealing ornate details, light traveling across surfaces",
     "destination": "drone-style slow rise revealing Sitges coastline, waves rolling",

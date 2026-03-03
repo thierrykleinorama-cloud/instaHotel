@@ -37,8 +37,11 @@ pg = st.navigation(
             st.Page("pages/6_Instagram_Preview.py", title="Instagram Preview", icon=":material/edit_note:"),
             st.Page("pages/7_AI_Photo_Enhancement.py", title="AI Photo Enhancement", icon=":material/auto_awesome:"),
             st.Page("pages/8_Photo_to_Video.py", title="Photo to Video", icon=":material/movie_creation:"),
+            st.Page("pages/12_Veo_Video.py", title="Veo 3 Video", icon=":material/slow_motion_video:"),
+            st.Page("pages/13_Carousel_Builder.py", title="Carousel Builder", icon=":material/view_carousel:"),
         ],
         "Editorial": [
+            st.Page("pages/11_Drafts_Review.py", title="Drafts Review", icon=":material/rate_review:"),
             st.Page("pages/9_Calendar.py", title="Calendar", icon=":material/calendar_month:"),
             st.Page("pages/10_Rules.py", title="Rules", icon=":material/tune:"),
         ],

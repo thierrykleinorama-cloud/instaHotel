@@ -235,19 +235,52 @@ def generate_scenarios(
 # Photo-to-Video via Replicate (Kling v2.1)
 # ---------------------------------------------------------------------------
 
-# Available video models on Replicate
+# Available video models
 VIDEO_MODELS = {
     "kling-v2.1": {
         "model_id": "kwaivgi/kling-v2.1",
         "label": "Kling v2.1",
+        "provider": "replicate",
         "cost_5s": 0.30,
         "cost_10s": 0.60,
         "supports_image": True,
         "image_param": "start_image",
     },
+    "veo-3.1-fast": {
+        "label": "Veo 3.1 Fast",
+        "provider": "google",
+        "cost_4s": 0.60,
+        "cost_6s": 0.90,
+        "cost_8s": 1.20,
+        "supports_image": True,
+    },
+    "veo-3.1": {
+        "label": "Veo 3.1 Standard",
+        "provider": "google",
+        "cost_4s": 3.00,
+        "cost_6s": 4.50,
+        "cost_8s": 6.00,
+        "supports_image": True,
+    },
 }
 
 DEFAULT_VIDEO_MODEL = "kling-v2.1"
+
+
+def get_model_durations(model: str) -> list[int]:
+    """Return valid duration options for a given video model."""
+    info = VIDEO_MODELS.get(model, {})
+    if info.get("provider") == "google":
+        return [4, 6, 8]
+    return [5, 10]
+
+
+def estimate_video_cost(model: str, duration: int) -> float:
+    """Estimate the cost in USD for a video generation."""
+    info = VIDEO_MODELS.get(model, {})
+    if info.get("provider") == "google":
+        return info.get(f"cost_{duration}s", 0.0)
+    return info.get("cost_5s", 0.0) if duration <= 5 else info.get("cost_10s", 0.0)
 
 
 def photo_to_video(
@@ -257,21 +290,27 @@ def photo_to_video(
     aspect_ratio: str = "9:16",
     model: str = DEFAULT_VIDEO_MODEL,
     negative_prompt: str = "blurry, distorted, low quality, text overlay, watermark",
+    resolution: str = "720p",
 ) -> dict:
-    """Convert a photo to video using Replicate.
+    """Convert a photo to video.
 
-    Args:
-        image_bytes: source photo
-        prompt: motion/scene prompt
-        duration: 5 or 10 seconds
-        aspect_ratio: "9:16" (reel), "16:9", "1:1"
-        model: video model key
-        negative_prompt: what to avoid
+    Dispatches to the correct backend based on model provider:
+    - "replicate" → Kling v2.1 via Replicate
+    - "google" → Veo 3.1 via Gemini API
 
-    Returns: {video_bytes, duration_sec, width, height, _cost}
+    Returns: {video_bytes, duration_sec, aspect_ratio, _cost}
     """
-    client = _get_replicate_client()
     model_info = VIDEO_MODELS[model]
+
+    # Dispatch to Veo for Google models
+    if model_info.get("provider") == "google":
+        from src.services.veo_generator import veo_photo_to_video
+        return veo_photo_to_video(
+            image_bytes, prompt, duration, aspect_ratio, model,
+            negative_prompt, resolution,
+        )
+
+    client = _get_replicate_client()
 
     png = _ensure_png(image_bytes)
     b64 = base64.b64encode(png).decode()
@@ -300,7 +339,7 @@ def photo_to_video(
     resp.raise_for_status()
     video_bytes = resp.content
 
-    cost = model_info["cost_5s"] if duration <= 5 else model_info["cost_10s"]
+    cost = estimate_video_cost(model, duration)
 
     return {
         "video_bytes": video_bytes,

@@ -42,7 +42,7 @@ with p2:
     st.markdown("**Step 2: Creative Transform**")
     st.caption("Multiply library — new entries")
     st.markdown(
-        ":green[&check;] Photo-to-video (Kling)\n\n"
+        ":green[&check;] Photo-to-video (Kling + Veo)\n\n"
         ":green[&check;] Creative scenarios\n\n"
         ":green[&check;] Background music\n\n"
         ":orange[&rarr;] Seasonal variants\n\n"
@@ -65,8 +65,8 @@ with p4:
     st.markdown(
         ":green[&check;] AI Captions\n\n"
         ":green[&check;] Tone variants\n\n"
-        ":orange[&rarr;] AI Humor\n\n"
-        ":orange[&rarr;] Carousel"
+        ":green[&check;] Carousel\n\n"
+        ":orange[&rarr;] AI Humor"
     )
 
 st.divider()
@@ -97,14 +97,37 @@ re-analysis and download enhanced images.
 
 st.divider()
 
-col_video = st.columns(1)[0]
+col_video, col_veo = st.columns(2)
 
 with col_video:
     st.markdown("""
 ### Photo to Video
 
-**Photo-to-video** (Kling v2.1), **creative scenario generation**
+**Photo-to-video** (Kling v2.1 + Veo 3.1), **creative scenario generation**
 with Claude, and **background music** (MusicGen). Three tabs in one workflow:
 generate video, brainstorm scenarios, add music and merge into a final MP4.
 """)
     st.page_link("pages/8_Photo_to_Video.py", label="Open Photo to Video", icon=":material/movie_creation:")
+
+with col_veo:
+    st.markdown("""
+### Veo 3 Video
+
+**Google Veo 3.1** — dedicated test page for Google's video generation model.
+Higher visual quality, native audio, 4/6/8s durations. Fast and Standard variants.
+""")
+    st.page_link("pages/12_Veo_Video.py", label="Open Veo 3 Video", icon=":material/slow_motion_video:")
+
+st.divider()
+
+col_carousel = st.columns(1)[0]
+
+with col_carousel:
+    st.markdown("""
+### Carousel Builder
+
+Build **multi-image carousel** posts for Instagram. Select 2-10 images,
+reorder, add multilingual captions and hashtags, preview with slide dots,
+save drafts, and publish directly.
+""")
+    st.page_link("pages/13_Carousel_Builder.py", label="Open Carousel Builder", icon=":material/view_carousel:")
