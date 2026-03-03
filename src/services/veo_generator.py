@@ -57,12 +57,12 @@ VEO_MODELS = {
     "veo-3.1-fast": {
         "model_id": "veo-3.1-fast-generate-preview",
         "label": "Veo 3.1 Fast",
-        "cost_per_sec": 0.15,   # ~$1.20 for 8s
+        "cost_per_sec": 0.15,   # $0.60/4s, $1.20/8s
     },
     "veo-3.1": {
         "model_id": "veo-3.1-generate-preview",
         "label": "Veo 3.1 Standard",
-        "cost_per_sec": 0.75,   # ~$6.00 for 8s
+        "cost_per_sec": 0.40,   # $1.60/4s, $3.20/8s
     },
 }
 

@@ -257,9 +257,9 @@ VIDEO_MODELS = {
     "veo-3.1": {
         "label": "Veo 3.1 Standard",
         "provider": "google",
-        "cost_4s": 3.00,
-        "cost_6s": 4.50,
-        "cost_8s": 6.00,
+        "cost_4s": 1.60,
+        "cost_6s": 2.40,
+        "cost_8s": 3.20,
         "supports_image": True,
     },
 }
