@@ -71,34 +71,60 @@ def generate_music(
     client = _get_replicate_client()
     model_info = MUSIC_MODELS[model]
 
-    output = client.run(
-        model_info["model_id"],
-        input={
-            "prompt": prompt,
-            "duration": duration,
-            "temperature": temperature,
-            "output_format": "wav",
-            "normalization_strategy": "loudness",
-        },
-    )
+    # Use predictions.create() for real metrics
+    # model_id format "owner/name:version" — extract version for predictions API
+    mid = model_info["model_id"]
+    version = mid.split(":")[-1] if ":" in mid else None
+
+    if version:
+        prediction = client.predictions.create(
+            version=version,
+            input={
+                "prompt": prompt,
+                "duration": duration,
+                "temperature": temperature,
+                "output_format": "wav",
+                "normalization_strategy": "loudness",
+            },
+        )
+    else:
+        prediction = client.predictions.create(
+            model=mid,
+            input={
+                "prompt": prompt,
+                "duration": duration,
+                "temperature": temperature,
+                "output_format": "wav",
+                "normalization_strategy": "loudness",
+            },
+        )
+    prediction.wait()
+    if prediction.status == "failed":
+        raise RuntimeError(f"Music generation failed: {prediction.error}")
 
     # Output is a URL to the audio file
-    audio_url = str(output)
+    audio_url = str(prediction.output)
     resp = httpx.get(audio_url, timeout=120, follow_redirects=True)
     resp.raise_for_status()
     audio_bytes = resp.content
 
     cost = duration * model_info["cost_per_sec"]
 
+    # Real metrics from Replicate
+    metrics = prediction.metrics or {}
+    predict_time = metrics.get("predict_time", 0)
+
     from src.services.cost_tracker import log_cost
     log_cost("replicate", f"music_gen_{model}", cost,
-             params={"duration": duration, "temperature": temperature})
+             params={"duration": duration, "temperature": temperature,
+                     "predict_time": predict_time, "source": "real_metrics"})
 
     return {
         "audio_bytes": audio_bytes,
         "duration_sec": duration,
         "format": "wav",
-        "_cost": {"operation": f"music_gen_{model}", "cost_usd": cost},
+        "_cost": {"operation": f"music_gen_{model}", "cost_usd": cost,
+                  "predict_time": predict_time},
     }
 
 

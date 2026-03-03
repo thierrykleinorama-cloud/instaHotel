@@ -133,7 +133,8 @@ def generate_captions(
 
     from src.services.cost_tracker import log_cost
     log_cost("claude", "generate_captions", cost, model=model,
-             input_tokens=input_tokens, output_tokens=output_tokens)
+             input_tokens=input_tokens, output_tokens=output_tokens,
+             params={"source": "real_tokens"})
 
     result["_usage"] = {
         "model": model,
@@ -204,7 +205,8 @@ def generate_destination_captions(
 
     from src.services.cost_tracker import log_cost
     log_cost("claude", "generate_destination_captions", cost, model=model,
-             input_tokens=input_tokens, output_tokens=output_tokens)
+             input_tokens=input_tokens, output_tokens=output_tokens,
+             params={"source": "real_tokens"})
 
     result["_usage"] = {
         "model": model,

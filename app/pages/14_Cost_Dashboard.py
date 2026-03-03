@@ -75,14 +75,24 @@ if rows:
     # Format for display
     display_rows = []
     for r in rows:
+        params = r.get("params") or {}
+        if isinstance(params, str):
+            import json
+            params = json.loads(params)
+        source = params.get("source", "estimate")
+        source_label = {"real_tokens": "Real", "real_balance": "Real",
+                        "real_metrics": "Real", "estimate": "Est."}.get(source, source)
+        predict_time = params.get("predict_time")
         display_rows.append({
             "Time": r.get("created_at", "")[:19].replace("T", " "),
             "Tool": r.get("tool", ""),
             "Operation": r.get("operation", ""),
             "Cost ($)": f"{float(r.get('cost_usd', 0)):.4f}",
+            "Source": source_label,
             "Model": r.get("model", "—"),
             "Tokens In": r.get("input_tokens") or "—",
             "Tokens Out": r.get("output_tokens") or "—",
+            "Runtime": f"{predict_time:.1f}s" if predict_time else "—",
         })
     st.dataframe(display_rows, use_container_width=True, hide_index=True)
 else:

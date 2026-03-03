@@ -134,6 +134,21 @@ def compute_outpaint_padding(
 
 STABILITY_BASE = "https://api.stability.ai"
 
+
+def _stability_balance(api_key: str) -> float:
+    """Fetch current Stability AI credit balance. Returns -1 on error."""
+    try:
+        resp = httpx.get(
+            f"{STABILITY_BASE}/v1/user/balance",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return float(resp.json().get("credits", -1))
+    except Exception:
+        pass
+    return -1.0
+
 STABILITY_METHODS = {
     "fast": {"path": "fast", "cost": 0.02, "description": "Fast 2x ($0.02)"},
     "conservative": {"path": "conservative", "cost": 0.40, "description": "Conservative 2x ($0.40)"},
@@ -162,6 +177,8 @@ def stability_upscale(
     png = _ensure_png(image_bytes)
     png = _downscale_for_api(png)  # Stability AI limit: 1 MP
     info = STABILITY_METHODS[method]
+
+    balance_before = _stability_balance(api_key)
 
     if method == "fast":
         # Fast upscale: single-step, returns image directly
@@ -214,15 +231,24 @@ def stability_upscale(
 
     rw, rh = _image_dimensions(result_bytes)
 
+    # Real cost from balance diff
+    balance_after = _stability_balance(api_key)
+    real_cost = None
+    if balance_before >= 0 and balance_after >= 0:
+        real_cost = round(balance_before - balance_after, 6)
+    cost = real_cost if real_cost is not None and real_cost > 0 else info["cost"]
+    source = "real_balance" if real_cost is not None and real_cost > 0 else "estimate"
+
     from src.services.cost_tracker import log_cost
-    log_cost("stability_ai", f"upscale_{method}", info["cost"],
-             params={"method": method})
+    log_cost("stability_ai", f"upscale_{method}", cost,
+             params={"method": method, "source": source,
+                     "balance_before": balance_before, "balance_after": balance_after})
 
     return {
         "image_bytes": result_bytes,
         "width": rw,
         "height": rh,
-        "_cost": {"operation": f"upscale_{method}", "cost_usd": info["cost"]},
+        "_cost": {"operation": f"upscale_{method}", "cost_usd": cost, "source": source},
     }
 
 
@@ -264,6 +290,7 @@ def stability_outpaint(
     png = _downscale_for_api(png, max_pixels=1_048_576)
     w, h = _image_dimensions(png)
     padding = compute_outpaint_padding(w, h, target_ratio)
+    balance_before = _stability_balance(api_key)
 
     if padding["left"] == 0 and padding["right"] == 0 and padding["top"] == 0 and padding["bottom"] == 0:
         return {
@@ -311,16 +338,26 @@ def stability_outpaint(
 
     rw, rh = _image_dimensions(result_bytes)
 
+    # Real cost from balance diff
+    balance_after = _stability_balance(api_key)
+    real_cost = None
+    if balance_before >= 0 and balance_after >= 0:
+        real_cost = round(balance_before - balance_after, 6)
+    cost = real_cost if real_cost is not None and real_cost > 0 else 0.04
+    source = "real_balance" if real_cost is not None and real_cost > 0 else "estimate"
+
     from src.services.cost_tracker import log_cost
-    log_cost("stability_ai", "outpaint", 0.04,
-             params={"target_ratio": target_ratio, "creativity": creativity})
+    log_cost("stability_ai", "outpaint", cost,
+             params={"target_ratio": target_ratio, "creativity": creativity,
+                     "source": source, "balance_before": balance_before,
+                     "balance_after": balance_after})
 
     return {
         "image_bytes": result_bytes,
         "width": rw,
         "height": rh,
         "padding": padding,
-        "_cost": {"operation": "outpaint", "cost_usd": 0.04},
+        "_cost": {"operation": "outpaint", "cost_usd": cost, "source": source},
     }
 
 
@@ -351,32 +388,42 @@ def replicate_upscale(
     b64 = base64.b64encode(png).decode()
     data_uri = f"data:image/png;base64,{b64}"
 
-    output = client.run(
-        "nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa",
+    prediction = client.predictions.create(
+        version="f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa",
         input={
             "image": data_uri,
             "scale": scale,
             "face_enhance": False,
         },
     )
+    prediction.wait()
+    if prediction.status == "failed":
+        raise RuntimeError(f"Replicate upscale failed: {prediction.error}")
 
     # output is a FileOutput / URL — download the result
-    result_url = str(output)
+    result_url = str(prediction.output)
     resp = httpx.get(result_url, timeout=120)
     resp.raise_for_status()
     result_bytes = resp.content
 
     rw, rh = _image_dimensions(result_bytes)
 
+    # Real metrics from Replicate
+    metrics = prediction.metrics or {}
+    predict_time = metrics.get("predict_time", 0)
+    estimate = 0.003 * scale
+
     from src.services.cost_tracker import log_cost
-    log_cost("replicate", "replicate_upscale", 0.003 * scale,
-             params={"model": "real-esrgan", "scale": scale})
+    log_cost("replicate", "replicate_upscale", estimate,
+             params={"model": "real-esrgan", "scale": scale,
+                     "predict_time": predict_time, "source": "real_metrics"})
 
     return {
         "image_bytes": result_bytes,
         "width": rw,
         "height": rh,
-        "_cost": {"operation": "replicate_upscale", "cost_usd": 0.003 * scale},
+        "_cost": {"operation": "replicate_upscale", "cost_usd": estimate,
+                  "predict_time": predict_time},
     }
 
 
@@ -407,8 +454,8 @@ def replicate_retouch(
     b64 = base64.b64encode(png).decode()
     data_uri = f"data:image/png;base64,{b64}"
 
-    output = client.run(
-        "google/nano-banana-pro",
+    prediction = client.predictions.create(
+        model="google/nano-banana-pro",
         input={
             "prompt": prompt,
             "image_input": [data_uri],
@@ -417,7 +464,11 @@ def replicate_retouch(
             "output_format": "png",
         },
     )
+    prediction.wait()
+    if prediction.status == "failed":
+        raise RuntimeError(f"Replicate retouch failed: {prediction.error}")
 
+    output = prediction.output
     # output is a FileOutput or list — get the first image URL
     if isinstance(output, list):
         result_url = str(output[0])
@@ -431,13 +482,19 @@ def replicate_retouch(
     rw, rh = _image_dimensions(result_bytes)
     cost = RETOUCH_COSTS.get(resolution, 0.15)
 
+    # Real metrics from Replicate
+    metrics = prediction.metrics or {}
+    predict_time = metrics.get("predict_time", 0)
+
     from src.services.cost_tracker import log_cost
     log_cost("replicate", "retouch_nano_banana", cost,
-             params={"resolution": resolution})
+             params={"resolution": resolution,
+                     "predict_time": predict_time, "source": "real_metrics"})
 
     return {
         "image_bytes": result_bytes,
         "width": rw,
         "height": rh,
-        "_cost": {"operation": "retouch_nano_banana", "cost_usd": cost},
+        "_cost": {"operation": "retouch_nano_banana", "cost_usd": cost,
+                  "predict_time": predict_time},
     }

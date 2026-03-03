@@ -150,7 +150,8 @@ def generate_motion_prompt_ai(
     cost = (inp * rates[0] + out * rates[1]) / 1_000_000
 
     log_cost("claude", "motion_prompt_ai", cost, model=model,
-             input_tokens=inp, output_tokens=out)
+             input_tokens=inp, output_tokens=out,
+             params={"source": "real_tokens"})
 
     return {
         "prompt": prompt_text,
@@ -226,7 +227,8 @@ def generate_scenarios(
     cost = (inp * rates[0] + out * rates[1]) / 1_000_000
 
     log_cost("claude", "generate_scenarios", cost, model=model,
-             input_tokens=inp, output_tokens=out)
+             input_tokens=inp, output_tokens=out,
+             params={"source": "real_tokens"})
 
     result["_usage"] = {
         "model": model,
@@ -348,14 +350,20 @@ def photo_to_video(
 
     cost = estimate_video_cost(model, duration)
 
+    # Real metrics from Replicate
+    metrics = result.metrics or {}
+    predict_time = metrics.get("predict_time", 0)
+
     log_cost("replicate", f"photo_to_video_{model}", cost,
-             params={"duration": duration, "aspect_ratio": aspect_ratio})
+             params={"duration": duration, "aspect_ratio": aspect_ratio,
+                     "predict_time": predict_time, "source": "real_metrics"})
 
     return {
         "video_bytes": video_bytes,
         "duration_sec": duration,
         "aspect_ratio": aspect_ratio,
-        "_cost": {"operation": f"photo_to_video_{model}", "cost_usd": cost},
+        "_cost": {"operation": f"photo_to_video_{model}", "cost_usd": cost,
+                  "predict_time": predict_time},
     }
 
 

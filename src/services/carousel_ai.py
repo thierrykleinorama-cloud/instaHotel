@@ -121,7 +121,8 @@ def suggest_carousel_themes(
 
     from src.services.cost_tracker import log_cost
     log_cost("claude", "carousel_suggest_themes", cost, model=model,
-             input_tokens=inp, output_tokens=out)
+             input_tokens=inp, output_tokens=out,
+             params={"source": "real_tokens"})
 
     result["_usage"] = {
         "model": model,
@@ -193,7 +194,8 @@ def select_carousel_images(
 
     from src.services.cost_tracker import log_cost
     log_cost("claude", "carousel_select_images", cost, model=model,
-             input_tokens=inp, output_tokens=out)
+             input_tokens=inp, output_tokens=out,
+             params={"source": "real_tokens"})
 
     result["_usage"] = {
         "model": model,
@@ -257,7 +259,8 @@ def generate_carousel_captions(
 
     from src.services.cost_tracker import log_cost
     log_cost("claude", "carousel_generate_captions", cost, model=model,
-             input_tokens=inp, output_tokens=out)
+             input_tokens=inp, output_tokens=out,
+             params={"source": "real_tokens"})
 
     result["_usage"] = {
         "model": model,

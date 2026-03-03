@@ -1,6 +1,12 @@
 """
 Persistent cost logging for all paid API calls.
 Every API call writes to the cost_log table for tracking and dashboards.
+
+Cost sources:
+- "real_tokens": Cost from actual token counts × published rates (Claude)
+- "real_balance": Cost from provider balance diff before/after (Stability AI)
+- "real_metrics": Cost from actual runtime metrics (Replicate predict_time)
+- "estimate": Fixed estimate from published pricing (fallback)
 """
 from datetime import datetime, timezone
 from typing import Optional
