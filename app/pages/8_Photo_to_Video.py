@@ -15,7 +15,7 @@ import streamlit as st
 
 from app.components.ui import sidebar_css, page_title
 from src.services.media_queries import fetch_all_media, fetch_media_by_id
-from src.services.google_drive import download_file_bytes
+from src.services.google_drive import download_file_bytes, upload_file_to_drive, ensure_generated_folders
 from src.utils import encode_image_bytes
 from src.services.creative_transform import (
     build_motion_prompt,
@@ -29,6 +29,7 @@ from src.prompts.creative_transform import HOTEL_CONTEXT
 from src.services.creative_job_queries import (
     save_scenario_job,
     save_video_job,
+    save_music_job,
     fetch_latest_scenarios,
     fetch_video_jobs,
 )
@@ -325,16 +326,28 @@ with tab_video:
                 )
                 st.session_state["cs_video_result"] = result
                 st.success(f"Video generated! Cost: ${result['_cost']['cost_usd']:.2f}")
-                # Persist video to Storage + DB for crash recovery
+                # Persist video to Storage + Drive + DB
                 try:
                     fname = f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel.mp4"
                     video_url = upload_to_supabase_storage(result["video_bytes"], fname, "video/mp4")
+                    # Upload to Google Drive for permanent storage
+                    _drive_fid = None
+                    try:
+                        folders = ensure_generated_folders()
+                        _drive_result = upload_file_to_drive(
+                            result["video_bytes"], fname, "video/mp4", folders["videos"],
+                        )
+                        _drive_fid = _drive_result["id"]
+                        st.caption(f"Saved to Drive: Generated/Videos/{fname}")
+                    except Exception as _de:
+                        st.warning(f"Drive upload failed (video saved to Supabase): {_de}")
                     save_video_job(
                         source_media_id=media_id,
                         video_url=video_url,
                         prompt=motion_prompt,
                         cost_usd=result["_cost"]["cost_usd"],
                         params={"duration": duration, "aspect_ratio": aspect_ratio, "model": video_model},
+                        drive_file_id=_drive_fid,
                     )
                     # Refresh prev_videos list
                     st.session_state["cs_prev_videos"] = fetch_video_jobs(media_id, limit=5)
@@ -604,6 +617,31 @@ with tab_music:
                     )
                     st.session_state["mu_result"] = mu_result
                     st.success(f"Music generated! Cost: ${mu_result['_cost']['cost_usd']:.3f}")
+                    # Upload to Google Drive + save to DB
+                    try:
+                        _mu_ext = mu_result.get("format", "wav")
+                        _mu_mime = "audio/mpeg" if _mu_ext == "mp3" else f"audio/{_mu_ext}"
+                        _mu_fname = f"{media.get('file_name', 'music').rsplit('.', 1)[0]}_music.{_mu_ext}"
+                        _mu_drive_fid = None
+                        try:
+                            folders = ensure_generated_folders()
+                            _mu_drive_res = upload_file_to_drive(
+                                mu_result["audio_bytes"], _mu_fname, _mu_mime, folders["music"],
+                            )
+                            _mu_drive_fid = _mu_drive_res["id"]
+                            st.caption(f"Saved to Drive: Generated/Music/{_mu_fname}")
+                        except Exception as _de:
+                            st.warning(f"Drive upload failed: {_de}")
+                        save_music_job(
+                            source_media_id=media_id,
+                            audio_url="",  # no Supabase URL for music
+                            prompt=music_prompt,
+                            cost_usd=mu_result["_cost"]["cost_usd"],
+                            params={"duration": mu_duration, "model": music_model, "temperature": temperature},
+                            drive_file_id=_mu_drive_fid,
+                        )
+                    except Exception:
+                        pass  # non-critical
                 except Exception as e:
                     st.error(f"Music generation failed: {e}")
 
@@ -663,6 +701,16 @@ with tab_music:
                 )
                 st.session_state["mu_composite_result"] = vc_result
                 st.success("Video + audio merged!")
+                # Upload composite to Drive
+                try:
+                    _comp_fname = f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel_music.mp4"
+                    folders = ensure_generated_folders()
+                    _comp_drive = upload_file_to_drive(
+                        vc_result["video_bytes"], _comp_fname, "video/mp4", folders["videos"],
+                    )
+                    st.caption(f"Saved to Drive: Generated/Videos/{_comp_fname}")
+                except Exception as _de:
+                    st.warning(f"Drive upload failed: {_de}")
             except Exception as e:
                 st.error(f"Compositing failed: {e}")
 

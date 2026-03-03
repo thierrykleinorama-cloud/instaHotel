@@ -4,7 +4,7 @@ import webbrowser
 from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 CREDS_PATH = Path("c:/Users/michael/agents-lab/google_credentials.json")
 TOKEN_PATH = Path(__file__).resolve().parent.parent / ".google_token_drive.json"
 

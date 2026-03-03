@@ -60,6 +60,7 @@ def save_video_job(
     cost_usd: float = 0,
     provider: str = "replicate",
     params: dict | None = None,
+    drive_file_id: str | None = None,
 ) -> dict:
     """Persist video generation result. Returns the created row."""
     client = get_supabase()
@@ -75,6 +76,8 @@ def save_video_job(
         "cost_usd": cost_usd,
         "result_url": video_url,
     }
+    if drive_file_id:
+        row["drive_file_id"] = drive_file_id
     result = client.table(TABLE_CREATIVE_JOBS).insert(row).execute()
     return result.data[0] if result.data else {}
 
@@ -85,6 +88,7 @@ def save_music_job(
     prompt: str,
     cost_usd: float = 0,
     params: dict | None = None,
+    drive_file_id: str | None = None,
 ) -> dict:
     """Persist music generation result. Returns the created row.
     Also saves to generated_music table."""
@@ -101,20 +105,25 @@ def save_music_job(
         "cost_usd": cost_usd,
         "result_url": audio_url,
     }
+    if drive_file_id:
+        row["drive_file_id"] = drive_file_id
     result = client.table(TABLE_CREATIVE_JOBS).insert(row).execute()
 
     # Also save to generated_music table
+    music_row = {
+        "source_media_id": source_media_id,
+        "prompt": prompt,
+        "preset": (params or {}).get("preset"),
+        "duration_seconds": (params or {}).get("duration"),
+        "audio_url": audio_url,
+        "generation_params": job_params,
+        "model": "musicgen",
+        "cost_usd": cost_usd,
+    }
+    if drive_file_id:
+        music_row["drive_file_id"] = drive_file_id
     try:
-        client.table(TABLE_GENERATED_MUSIC).insert({
-            "source_media_id": source_media_id,
-            "prompt": prompt,
-            "preset": (params or {}).get("preset"),
-            "duration_seconds": (params or {}).get("duration"),
-            "audio_url": audio_url,
-            "generation_params": job_params,
-            "model": "musicgen",
-            "cost_usd": cost_usd,
-        }).execute()
+        client.table(TABLE_GENERATED_MUSIC).insert(music_row).execute()
     except Exception:
         pass
 
