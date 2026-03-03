@@ -165,6 +165,9 @@
 - [ ] **Enrich DESTINATION_CONTEXT** — Add owner's specific restaurant recommendations, favorite spots to `src/prompts/destination_content.py` (placeholder currently)
 - [ ] **Sitges Knowledge Base page** — Streamlit admin page to manage Sitges knowledge dynamically instead of static `DESTINATION_CONTEXT`
 
+### Monitoring & Ops
+- [ ] **API change monitor agent** — Weekly automated check of all tool providers (Replicate, Google Gemini, Stability AI, Anthropic) for new models, pricing changes, new API capabilities. Report via WhatsApp.
+
 ### Testing & Maintenance
 - [ ] **User testing Phase 2.5A** — Test AI enhancement with real STABILITY_API_KEY + REPLICATE_API_TOKEN
 
