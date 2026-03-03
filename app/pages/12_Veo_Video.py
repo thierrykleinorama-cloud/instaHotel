@@ -17,13 +17,18 @@ from app.components.media_selector import render_media_selector
 from src.utils import encode_image_bytes
 from src.services.creative_transform import (
     generate_motion_prompt_ai,
+    generate_scenarios,
     photo_to_video,
     VIDEO_MODELS,
     estimate_video_cost,
 )
 from src.prompts.creative_transform import HOTEL_CONTEXT
-from src.services.creative_job_queries import save_video_job, fetch_video_jobs
-from src.services.creative_queries import update_job_feedback
+from src.services.creative_job_queries import save_video_job, save_scenario_job, fetch_video_jobs
+from src.services.creative_queries import (
+    update_job_feedback,
+    fetch_scenarios_for_media,
+    update_scenario_feedback,
+)
 from src.services.publisher import upload_to_supabase_storage
 from src.services.google_drive import upload_file_to_drive, ensure_generated_folders
 
@@ -82,12 +87,12 @@ st.markdown("### Motion Prompt")
 
 prompt_mode = st.radio(
     "Prompt source",
-    ["AI-generated (Claude)", "Manual"],
+    ["AI-generated (Claude)", "3 Creative Scenarios", "From scenario", "Manual"],
     key="veo_prompt_mode",
     horizontal=True,
 )
 
-if prompt_mode.startswith("AI"):
+if prompt_mode == "AI-generated (Claude)":
     ai_brief = st.text_input(
         "Creative brief (optional)",
         placeholder="e.g., 'cinematic sunrise reveal', 'cozy winter morning'",
@@ -112,6 +117,98 @@ if prompt_mode.startswith("AI"):
                 st.success(f"AI prompt generated! (${usage['cost_usd']:.4f})")
             except Exception as e:
                 st.error(f"AI prompt generation failed: {e}")
+
+elif prompt_mode == "3 Creative Scenarios":
+    st.caption(
+        "Claude generates creative video concepts from your photo + hotel context. "
+        "Each scenario includes a motion prompt you can use directly."
+    )
+    sc_brief = st.text_input(
+        "Creative brief (optional)",
+        placeholder="e.g., 'cats taking over the breakfast buffet' or 'summer poolside vibes'",
+        key="veo_sc_brief",
+    )
+    sc_count = st.slider("Number of scenarios", 2, 5, 3, key="veo_sc_count")
+    sc_include_photo = st.checkbox("Include photo for richer scenarios", value=True, key="veo_sc_photo")
+
+    if st.button("Generate Scenarios", type="secondary", key="veo_gen_scenarios"):
+        with st.spinner("Claude is brainstorming creative scenarios..."):
+            try:
+                b64 = encode_image_bytes(image_bytes) if sc_include_photo else None
+                sc_result = generate_scenarios(
+                    media=media,
+                    creative_brief=sc_brief,
+                    hotel_context=HOTEL_CONTEXT,
+                    count=sc_count,
+                    image_base64=b64,
+                )
+                st.session_state["veo_scenarios"] = sc_result
+                usage = sc_result.get("_usage", {})
+                st.success(f"Scenarios generated! (${usage.get('cost_usd', 0):.4f})")
+                try:
+                    save_scenario_job(
+                        source_media_id=media["id"],
+                        scenarios=sc_result.get("scenarios", []),
+                        cost_usd=usage.get("cost_usd", 0),
+                        params={"brief": sc_brief, "count": sc_count},
+                    )
+                except Exception:
+                    pass
+            except Exception as e:
+                st.error(f"Scenario generation failed: {e}")
+
+    # Display generated scenarios
+    sc_data = st.session_state.get("veo_scenarios")
+    if sc_data and sc_data.get("scenarios"):
+        for i, sc in enumerate(sc_data["scenarios"]):
+            with st.expander(
+                f"{sc.get('mood', '?').upper()} — {sc.get('title', f'Scenario {i+1}')}",
+                expanded=(i == 0),
+            ):
+                st.markdown(f"**{sc.get('description', '')}**")
+                st.caption(f"Mood: {sc.get('mood', '?')}")
+                st.code(sc.get("motion_prompt", ""), language=None)
+                if sc.get("caption_hook"):
+                    st.markdown(f"Caption hook: *{sc['caption_hook']}*")
+                if st.button("Use this prompt", key=f"veo_use_sc_{i}"):
+                    st.session_state["veo_motion_prompt"] = sc.get("motion_prompt", "")
+                    st.session_state["_veo_prompt_updated"] = True
+                    st.rerun()
+
+elif prompt_mode == "From scenario":
+    # Load scenarios from DB
+    db_scenarios = fetch_scenarios_for_media(media["id"])
+    if db_scenarios:
+        st.markdown(f"**{len(db_scenarios)} saved scenarios** for this photo:")
+        for i, s in enumerate(db_scenarios):
+            sc_status = s.get("status", "draft")
+            _sc_colors = {"draft": "blue", "accepted": "green", "rejected": "red"}
+            _sc_color = _sc_colors.get(sc_status, "gray")
+            with st.expander(
+                f":{_sc_color}[{sc_status.upper()}] {s.get('mood', '?').upper()} — {s.get('title', f'Scenario {i+1}')}",
+                expanded=(i == 0 and sc_status == "draft"),
+            ):
+                st.markdown(f"**{s.get('description', '')}**")
+                st.code(s.get("motion_prompt", ""), language=None)
+                if st.button("Use this prompt", key=f"veo_use_db_{s['id']}"):
+                    st.session_state["veo_motion_prompt"] = s.get("motion_prompt", "")
+                    st.session_state["_veo_prompt_updated"] = True
+                    st.rerun()
+
+                # Accept/reject inline
+                rating = st.slider("Rating", 1, 5, 3, key=f"veo_scr_{s['id']}")
+                fb = st.text_input("Feedback", key=f"veo_scfb_{s['id']}", placeholder="Optional")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("Accept", key=f"veo_scok_{s['id']}", use_container_width=True):
+                        update_scenario_feedback(s["id"], "accepted", feedback=fb or None, rating=rating)
+                        st.rerun()
+                with c2:
+                    if st.button("Reject", key=f"veo_scno_{s['id']}", use_container_width=True):
+                        update_scenario_feedback(s["id"], "rejected", feedback=fb or None, rating=rating)
+                        st.rerun()
+    else:
+        st.info("No scenarios yet. Use '3 Creative Scenarios' to generate some first.")
 
 if st.session_state.pop("_veo_prompt_updated", False):
     st.session_state["veo_prompt_edit"] = st.session_state.get("veo_motion_prompt", "")

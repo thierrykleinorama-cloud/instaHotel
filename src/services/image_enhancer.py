@@ -213,6 +213,11 @@ def stability_upscale(
             raise RuntimeError(f"Unexpected API response keys: {list(body.keys())}")
 
     rw, rh = _image_dimensions(result_bytes)
+
+    from src.services.cost_tracker import log_cost
+    log_cost("stability_ai", f"upscale_{method}", info["cost"],
+             params={"method": method})
+
     return {
         "image_bytes": result_bytes,
         "width": rw,
@@ -305,6 +310,11 @@ def stability_outpaint(
     result_bytes = resp.content
 
     rw, rh = _image_dimensions(result_bytes)
+
+    from src.services.cost_tracker import log_cost
+    log_cost("stability_ai", "outpaint", 0.04,
+             params={"target_ratio": target_ratio, "creativity": creativity})
+
     return {
         "image_bytes": result_bytes,
         "width": rw,
@@ -357,6 +367,11 @@ def replicate_upscale(
     result_bytes = resp.content
 
     rw, rh = _image_dimensions(result_bytes)
+
+    from src.services.cost_tracker import log_cost
+    log_cost("replicate", "replicate_upscale", 0.003 * scale,
+             params={"model": "real-esrgan", "scale": scale})
+
     return {
         "image_bytes": result_bytes,
         "width": rw,
@@ -415,6 +430,11 @@ def replicate_retouch(
 
     rw, rh = _image_dimensions(result_bytes)
     cost = RETOUCH_COSTS.get(resolution, 0.15)
+
+    from src.services.cost_tracker import log_cost
+    log_cost("replicate", "retouch_nano_banana", cost,
+             params={"resolution": resolution})
+
     return {
         "image_bytes": result_bytes,
         "width": rw,

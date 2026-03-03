@@ -18,6 +18,7 @@ from src.prompts.creative_transform import (
     SCENARIO_SYSTEM,
     SCENARIO_TEMPLATE,
 )
+from src.services.cost_tracker import log_cost
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +149,9 @@ def generate_motion_prompt_ai(
     rates = cost_rates.get(model, (3.0, 15.0))
     cost = (inp * rates[0] + out * rates[1]) / 1_000_000
 
+    log_cost("claude", "motion_prompt_ai", cost, model=model,
+             input_tokens=inp, output_tokens=out)
+
     return {
         "prompt": prompt_text,
         "_usage": {
@@ -220,6 +224,9 @@ def generate_scenarios(
     cost_rates = {"claude-sonnet-4-6": (3.0, 15.0), "claude-haiku-4-5-20251001": (0.8, 4.0)}
     rates = cost_rates.get(model, (3.0, 15.0))
     cost = (inp * rates[0] + out * rates[1]) / 1_000_000
+
+    log_cost("claude", "generate_scenarios", cost, model=model,
+             input_tokens=inp, output_tokens=out)
 
     result["_usage"] = {
         "model": model,
@@ -340,6 +347,9 @@ def photo_to_video(
     video_bytes = resp.content
 
     cost = estimate_video_cost(model, duration)
+
+    log_cost("replicate", f"photo_to_video_{model}", cost,
+             params={"duration": duration, "aspect_ratio": aspect_ratio})
 
     return {
         "video_bytes": video_bytes,

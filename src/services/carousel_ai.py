@@ -117,11 +117,17 @@ def suggest_carousel_themes(
     inp = response.usage.input_tokens
     out = response.usage.output_tokens
 
+    cost = _compute_cost(model, inp, out)
+
+    from src.services.cost_tracker import log_cost
+    log_cost("claude", "carousel_suggest_themes", cost, model=model,
+             input_tokens=inp, output_tokens=out)
+
     result["_usage"] = {
         "model": model,
         "input_tokens": inp,
         "output_tokens": out,
-        "cost_usd": _compute_cost(model, inp, out),
+        "cost_usd": cost,
     }
     return result
 
@@ -183,11 +189,17 @@ def select_carousel_images(
     inp = response.usage.input_tokens
     out = response.usage.output_tokens
 
+    cost = _compute_cost(model, inp, out)
+
+    from src.services.cost_tracker import log_cost
+    log_cost("claude", "carousel_select_images", cost, model=model,
+             input_tokens=inp, output_tokens=out)
+
     result["_usage"] = {
         "model": model,
         "input_tokens": inp,
         "output_tokens": out,
-        "cost_usd": _compute_cost(model, inp, out),
+        "cost_usd": cost,
     }
     return result
 
@@ -241,10 +253,16 @@ def generate_carousel_captions(
     inp = response.usage.input_tokens
     out = response.usage.output_tokens
 
+    cost = _compute_cost(model, inp, out)
+
+    from src.services.cost_tracker import log_cost
+    log_cost("claude", "carousel_generate_captions", cost, model=model,
+             input_tokens=inp, output_tokens=out)
+
     result["_usage"] = {
         "model": model,
         "input_tokens": inp,
         "output_tokens": out,
-        "cost_usd": _compute_cost(model, inp, out),
+        "cost_usd": cost,
     }
     return result

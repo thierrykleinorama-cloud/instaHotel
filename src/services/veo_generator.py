@@ -162,6 +162,10 @@ def veo_photo_to_video(
 
     cost = duration * model_info["cost_per_sec"]
 
+    from src.services.cost_tracker import log_cost
+    log_cost("google_veo", f"photo_to_video_{model}", cost,
+             params={"duration": duration, "aspect_ratio": aspect_ratio, "resolution": resolution})
+
     return {
         "video_bytes": video_data,
         "duration_sec": duration,

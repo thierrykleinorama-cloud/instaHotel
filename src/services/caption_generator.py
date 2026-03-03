@@ -129,12 +129,18 @@ def generate_captions(
     # Attach usage metadata
     input_tokens = response.usage.input_tokens
     output_tokens = response.usage.output_tokens
+    cost = compute_cost(model, input_tokens, output_tokens)
+
+    from src.services.cost_tracker import log_cost
+    log_cost("claude", "generate_captions", cost, model=model,
+             input_tokens=input_tokens, output_tokens=output_tokens)
+
     result["_usage"] = {
         "model": model,
         "model_label": AVAILABLE_MODELS.get(model, {}).get("label", model),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "cost_usd": compute_cost(model, input_tokens, output_tokens),
+        "cost_usd": cost,
     }
 
     return result
@@ -194,12 +200,18 @@ def generate_destination_captions(
 
     input_tokens = response.usage.input_tokens
     output_tokens = response.usage.output_tokens
+    cost = compute_cost(model, input_tokens, output_tokens)
+
+    from src.services.cost_tracker import log_cost
+    log_cost("claude", "generate_destination_captions", cost, model=model,
+             input_tokens=input_tokens, output_tokens=output_tokens)
+
     result["_usage"] = {
         "model": model,
         "model_label": AVAILABLE_MODELS.get(model, {}).get("label", model),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "cost_usd": compute_cost(model, input_tokens, output_tokens),
+        "cost_usd": cost,
     }
 
     return result

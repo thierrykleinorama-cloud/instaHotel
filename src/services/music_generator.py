@@ -90,6 +90,10 @@ def generate_music(
 
     cost = duration * model_info["cost_per_sec"]
 
+    from src.services.cost_tracker import log_cost
+    log_cost("replicate", f"music_gen_{model}", cost,
+             params={"duration": duration, "temperature": temperature})
+
     return {
         "audio_bytes": audio_bytes,
         "duration_sec": duration,
