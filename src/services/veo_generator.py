@@ -55,12 +55,12 @@ def _ensure_png(image_bytes: bytes) -> bytes:
 
 VEO_MODELS = {
     "veo-3.1-fast": {
-        "model_id": "veo-3.1-fast-generate-001",
+        "model_id": "veo-3.1-fast-generate-preview",
         "label": "Veo 3.1 Fast",
         "cost_per_sec": 0.15,   # ~$1.20 for 8s
     },
     "veo-3.1": {
-        "model_id": "veo-3.1-generate-001",
+        "model_id": "veo-3.1-generate-preview",
         "label": "Veo 3.1 Standard",
         "cost_per_sec": 0.75,   # ~$6.00 for 8s
     },
