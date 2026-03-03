@@ -3,6 +3,7 @@ View 13 — Carousel Builder (AI Lab)
 Build multi-image carousel posts for Instagram — manual or AI-assisted.
 """
 import base64
+import io
 import sys
 from pathlib import Path
 
@@ -31,6 +32,22 @@ from src.services.publisher import publish_carousel, upload_to_supabase_storage
 @st.cache_data(ttl=300)
 def _download_thumb(drive_file_id: str) -> bytes:
     return download_file_bytes(drive_file_id)
+
+
+def _to_jpeg_b64(raw_bytes: bytes) -> str:
+    """Convert any image format (HEIC, PNG, JPEG) to JPEG base64 string."""
+    from PIL import Image
+    try:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+    except ImportError:
+        pass
+    img = Image.open(io.BytesIO(raw_bytes))
+    if img.mode not in ("RGB",):
+        img = img.convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return base64.b64encode(buf.getvalue()).decode()
 
 
 # ---- Page setup ----
@@ -208,7 +225,7 @@ if build_mode.startswith("AI"):
     st.divider()
 
 # =======================================================================
-# STEP 1: Manual Image Picker (paginated gallery)
+# STEP 1: Manual Image Picker (paginated gallery with thumbnails)
 # =======================================================================
 GALLERY_PAGE_SIZE = 50
 
@@ -249,8 +266,13 @@ with st.expander(
                 mid = m["id"]
                 is_selected = mid in selected_set
 
-                if m.get("thumbnail_url"):
-                    st.image(m["thumbnail_url"], width=120)
+                # Show real thumbnail from Drive
+                if m.get("drive_file_id"):
+                    try:
+                        thumb_bytes = _download_thumb(m["drive_file_id"])
+                        st.image(thumb_bytes, width=120)
+                    except Exception:
+                        st.caption(m.get("file_name", "?")[:20])
                 else:
                     st.caption(m.get("file_name", "?")[:20])
 
@@ -281,49 +303,52 @@ if len(selected_ids) < 2:
 else:
     ai_reasons = st.session_state.get("cb_ai_selection_reasons", {})
     n_selected = len(selected_ids)
-    strip_cols = st.columns(min(n_selected, 6))
+
+    # Show images in a clean grid with buttons aligned under each image
+    img_cols = st.columns(min(n_selected, 5))
 
     for i, mid in enumerate(selected_ids):
-        col_idx = i % min(n_selected, 6)
-        with strip_cols[col_idx]:
+        col_idx = i % min(n_selected, 5)
+        with img_cols[col_idx]:
             m = media_by_id.get(mid)
             if m:
                 try:
                     thumb = _download_thumb(m["drive_file_id"])
-                    st.image(thumb, width=100)
+                    st.image(thumb, use_container_width=True)
                 except Exception:
                     st.caption(m.get("file_name", "?")[:15])
-                st.caption(f"**#{i + 1}** {m.get('file_name', '?')[:12]}")
+                st.caption(f"**#{i + 1}** {m.get('file_name', '?')[:15]}")
             else:
                 st.caption(f"**#{i + 1}** (missing)")
 
             if mid in ai_reasons:
                 st.caption(f"*{ai_reasons[mid][:60]}*")
 
-            bc1, bc2, bc3 = st.columns(3)
-            with bc1:
-                if i > 0 and st.button(":material/arrow_upward:", key=f"cb_up_{mid}"):
+            # Buttons in a single row: up | down | remove
+            btn_cols = st.columns([1, 1, 1])
+            with btn_cols[0]:
+                if i > 0 and st.button("\u2191", key=f"cb_up_{mid}", help="Move up"):
                     selected_ids[i], selected_ids[i - 1] = selected_ids[i - 1], selected_ids[i]
                     st.rerun()
-            with bc2:
-                if i < n_selected - 1 and st.button(":material/arrow_downward:", key=f"cb_dn_{mid}"):
+            with btn_cols[1]:
+                if i < n_selected - 1 and st.button("\u2193", key=f"cb_dn_{mid}", help="Move down"):
                     selected_ids[i], selected_ids[i + 1] = selected_ids[i + 1], selected_ids[i]
                     st.rerun()
-            with bc3:
-                if st.button(":material/close:", key=f"cb_rm_{mid}"):
+            with btn_cols[2]:
+                if st.button("\u2717", key=f"cb_rm_{mid}", help="Remove"):
                     selected_ids.remove(mid)
                     st.rerun()
 
     st.divider()
 
     # =======================================================================
-    # STEP 3: Preview
+    # STEP 3: Preview (all 3 languages stacked, HEIC converted)
     # =======================================================================
     st.markdown("### Preview")
 
     from app.components.ig_preview import render_ig_preview_carousel
 
-    # Collect b64 images (uses cached _download_thumb)
+    # Collect b64 images — convert HEIC/PNG to JPEG for preview
     first_m = media_by_id.get(selected_ids[0])
     if first_m and first_m.get("drive_file_id"):
         try:
@@ -333,11 +358,23 @@ else:
                 if m and m.get("drive_file_id"):
                     try:
                         b = _download_thumb(m["drive_file_id"])
-                        all_b64.append(base64.b64encode(b).decode())
+                        all_b64.append(_to_jpeg_b64(b))
                     except Exception:
                         pass
 
-            caption_text = st.session_state.get("cb_caption_es", "")
+            # Build stacked multilingual caption for preview
+            caption_parts = []
+            cap_es = st.session_state.get("cb_caption_es", "")
+            cap_en = st.session_state.get("cb_caption_en", "")
+            cap_fr = st.session_state.get("cb_caption_fr", "")
+            if cap_es:
+                caption_parts.append(cap_es)
+            if cap_en:
+                caption_parts.append(f"\U0001f1ec\U0001f1e7 {cap_en}")
+            if cap_fr:
+                caption_parts.append(f"\U0001f1eb\U0001f1f7 {cap_fr}")
+            caption_text = "\n\n".join(caption_parts)
+
             hashtags_text = " ".join(f"#{h}" for h in st.session_state.get("cb_hashtags_list", []))
 
             html, height = render_ig_preview_carousel(
@@ -357,6 +394,10 @@ else:
     st.markdown("### Captions & Hashtags")
 
     # --- AI Caption Generation ---
+    # Use a flag pattern to avoid widget key conflicts with session_state writes
+    if st.session_state.pop("_cb_captions_generated", False):
+        st.success("Captions generated!")
+
     if st.button("AI Generate Captions", type="secondary", key="cb_ai_captions"):
         theme_title = st.session_state.get("cb_ai_theme_title", "") or st.session_state.get("cb_title", "Hotel carousel")
         theme_desc = st.session_state.get("cb_ai_theme_desc", "") or "Carousel post for Hotel Noucentista"
@@ -371,6 +412,9 @@ else:
                     theme_description=theme_desc,
                     selected_media=sel_media,
                 )
+                # Delete widget keys first so session_state write takes effect
+                for k in ["cb_caption_es", "cb_caption_en", "cb_caption_fr", "cb_hashtags"]:
+                    st.session_state.pop(k, None)
                 st.session_state["cb_caption_es"] = cap_result.get("caption_es", "")
                 st.session_state["cb_caption_en"] = cap_result.get("caption_en", "")
                 st.session_state["cb_caption_fr"] = cap_result.get("caption_fr", "")
@@ -378,8 +422,7 @@ else:
                 if hashtags:
                     st.session_state["cb_hashtags"] = ", ".join(hashtags)
                     st.session_state["cb_hashtags_list"] = hashtags
-                usage = cap_result.get("_usage", {})
-                st.success(f"Captions generated! (${usage.get('cost_usd', 0):.4f})")
+                st.session_state["_cb_captions_generated"] = True
                 st.rerun()
             except Exception as e:
                 st.error(f"Caption generation failed: {e}")
@@ -515,6 +558,9 @@ else:
             with dc1:
                 if d["status"] == "draft":
                     if st.button("Load into editor", key=f"cb_load_{d['id']}"):
+                        # Clear widget keys first so session_state write takes effect
+                        for k in ["cb_caption_es", "cb_caption_en", "cb_caption_fr", "cb_hashtags", "cb_title"]:
+                            st.session_state.pop(k, None)
                         st.session_state["cb_selected_ids"] = d.get("media_ids", [])
                         st.session_state["cb_caption_es"] = d.get("caption_es", "")
                         st.session_state["cb_caption_en"] = d.get("caption_en", "")
