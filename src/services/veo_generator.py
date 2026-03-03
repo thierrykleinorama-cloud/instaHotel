@@ -142,12 +142,28 @@ def veo_photo_to_video(
         raise RuntimeError(f"Veo generation failed: {error or 'No videos returned'}")
 
     video = operation.result.generated_videos[0]
-    video_bytes = video.video.video_bytes
+
+    # video.video.video_bytes is None for remote files — download via URI
+    vid = video.video
+    video_data = vid.video_bytes
+    if video_data is None and vid.uri:
+        import httpx
+        api_key = _get_secret("GOOGLE_GENAI_API_KEY")
+        resp = httpx.get(
+            f"{vid.uri}&key={api_key}" if "?" in vid.uri else f"{vid.uri}?key={api_key}",
+            follow_redirects=True,
+            timeout=120,
+        )
+        resp.raise_for_status()
+        video_data = resp.content
+
+    if not video_data:
+        raise RuntimeError("Veo generation succeeded but video bytes could not be downloaded.")
 
     cost = duration * model_info["cost_per_sec"]
 
     return {
-        "video_bytes": video_bytes,
+        "video_bytes": video_data,
         "duration_sec": duration,
         "aspect_ratio": aspect_ratio,
         "_cost": {"operation": f"photo_to_video_{model}", "cost_usd": cost},
