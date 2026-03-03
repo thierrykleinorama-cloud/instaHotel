@@ -144,7 +144,9 @@
 
 ### Video & Creative
 - [x] **Veo 3.1 integration (B1)** — Google Veo 3.1 Fast/Standard as second video model. `veo_generator.py` service, `VIDEO_MODELS` dispatch, dedicated AI Lab page `12_Veo_Video.py`. Duration 4/6/8s, resolution 720p/1080p. Needs `GOOGLE_GENAI_API_KEY` in `.env`.
-- [x] **Carousel support (B2)** — Multi-image IG posts. `carousel_drafts` DB table, `carousel_queries.py` CRUD, `publisher.py` carousel functions, `13_Carousel_Builder.py` AI Lab page with multi-image picker, reorder, preview with dots/arrows, save/publish.
+- [x] **Carousel support (B2)** — Multi-image IG posts. `carousel_drafts` DB table, `carousel_queries.py` CRUD, `publisher.py` carousel functions, `13_Carousel_Builder.py` AI Lab page with AI-assisted (theme suggestions, image selection, caption generation) + manual picker, reorder, IG preview with dots/arrows, save/publish. Optimized with paginated gallery + dict lookups.
+- [x] **Persistent cost tracking** — `cost_log` DB table, `cost_tracker.py` service (`log_cost` fire-and-forget in all 8 services, 13 call sites), `14_Cost_Dashboard.py` with KPI metrics + cost-by-tool breakdown + filterable recent calls table. All API calls auto-logged: Claude, Veo, Kling, Stability AI, Replicate, MusicGen.
+- [x] **Creative Scenarios on Veo page** — Added "3 Creative Scenarios" and "From scenario" prompt modes to Veo page. Generate, review, accept/reject scenarios, load prompts directly into video generation.
 - [ ] **End image support** — Show hotel facade at end of Kling videos (needs `end_image` param for transitions)
 - [ ] **Seasonal & Element Variants** — Transform photos to different seasons (summer → winter), add elements, object removal. Placeholder prompt exists: `SEASONAL_TEMPLATE` in creative_transform.py but not wired.
 - [ ] **AI Humor** — Dedicated humor scenario mode for creative transforms
