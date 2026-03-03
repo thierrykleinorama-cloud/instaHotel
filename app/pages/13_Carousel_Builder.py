@@ -1,7 +1,8 @@
 """
 View 13 — Carousel Builder (AI Lab)
-Build multi-image carousel posts for Instagram.
+Build multi-image carousel posts for Instagram — manual or AI-assisted.
 """
+import base64
 import sys
 from pathlib import Path
 
@@ -12,13 +13,17 @@ if _root not in sys.path:
 import streamlit as st
 
 from app.components.ui import sidebar_css, page_title
-from src.services.media_queries import fetch_all_media, fetch_media_by_id, fetch_distinct_values
+from src.services.media_queries import fetch_all_media, fetch_distinct_values
 from src.services.google_drive import download_file_bytes
 from src.services.carousel_queries import (
     save_carousel_draft,
     fetch_carousel_drafts,
-    update_carousel_status,
     delete_carousel_draft,
+)
+from src.services.carousel_ai import (
+    suggest_carousel_themes,
+    select_carousel_images,
+    generate_carousel_captions,
 )
 from src.services.publisher import publish_carousel, upload_to_supabase_storage
 
@@ -28,98 +33,272 @@ def _download_thumb(drive_file_id: str) -> bytes:
     return download_file_bytes(drive_file_id)
 
 
+# ---- Page setup ----
 sidebar_css()
 page_title("Carousel Builder", "Multi-image Instagram carousel posts")
 
 st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
 
-# --- Sidebar filters (same pattern as media_selector) ---
-with st.sidebar:
-    st.subheader("Find Images")
-
-    categories = fetch_distinct_values("category")
-    sel_cats = st.multiselect("Category", categories, key="cb_cat")
-
-    min_q = st.slider("Min quality", 1, 10, 5, key="cb_minq")
-    search = st.text_input("Search filename", key="cb_search")
-
-all_media = fetch_all_media(media_type="image")
-if sel_cats:
-    all_media = [m for m in all_media if m.get("category") in sel_cats]
-all_media = [m for m in all_media if (m.get("ig_quality") or 0) >= min_q]
-if search:
-    all_media = [m for m in all_media if search.lower() in m.get("file_name", "").lower()]
-
-# --- Initialize session state ---
-if "cb_selected_ids" not in st.session_state:
-    st.session_state["cb_selected_ids"] = []
+# ---- Initialize session state defaults ----
+for _key, _default in [
+    ("cb_selected_ids", []),
+    ("cb_caption_es", ""),
+    ("cb_caption_en", ""),
+    ("cb_caption_fr", ""),
+    ("cb_hashtags", ""),
+    ("cb_hashtags_list", []),
+    ("cb_title", ""),
+    ("cb_ai_selection_reasons", {}),
+    ("cb_gallery_page", 0),
+]:
+    if _key not in st.session_state:
+        st.session_state[_key] = _default
 
 selected_ids: list[str] = st.session_state["cb_selected_ids"]
 
-# --- Image picker gallery ---
-st.markdown("### 1. Select Images (2-10)")
-st.caption(f"{len(all_media)} images match filters | {len(selected_ids)} selected")
+# ---- Fetch all images ONCE, build lookup dict ----
+all_media = fetch_all_media(media_type="image")
+media_by_id: dict[str, dict] = {m["id"]: m for m in all_media}
 
-# Display as grid with checkboxes
-COLS = 5
-rows = [all_media[i:i + COLS] for i in range(0, len(all_media), COLS)]
+# ---- Sidebar filters ----
+with st.sidebar:
+    st.subheader("Find Images")
+    categories = fetch_distinct_values("category")
+    sel_cats = st.multiselect("Category", categories, key="cb_cat")
+    min_q = st.slider("Min quality", 1, 10, 5, key="cb_minq")
+    search = st.text_input("Search filename", key="cb_search")
 
-for row_items in rows:
-    cols = st.columns(COLS)
-    for idx, m in enumerate(row_items):
-        with cols[idx]:
-            is_selected = m["id"] in selected_ids
-            # Show selection number if selected
-            label = f"**#{selected_ids.index(m['id']) + 1}**" if is_selected else ""
+# Apply filters (uses set for O(1) category lookup)
+_sel_cats_set = set(sel_cats) if sel_cats else None
+_search_lower = search.lower() if search else None
 
-            if m.get("thumbnail_url"):
-                st.image(m["thumbnail_url"], width=120)
-            else:
-                st.caption(m.get("file_name", "?")[:20])
+filtered_media = [
+    m for m in all_media
+    if (m.get("ig_quality") or 0) >= min_q
+    and (_sel_cats_set is None or m.get("category") in _sel_cats_set)
+    and (_search_lower is None or _search_lower in m.get("file_name", "").lower())
+]
 
-            if label:
-                st.markdown(label)
+# Pre-fetch selected media objects (used in multiple sections below)
+selected_media_objs: list[dict] = [media_by_id[mid] for mid in selected_ids if mid in media_by_id]
 
-            cb = st.checkbox(
-                m.get("file_name", "?")[:18],
-                value=is_selected,
-                key=f"cb_sel_{m['id']}",
-            )
-            if cb and m["id"] not in selected_ids:
-                if len(selected_ids) < 10:
-                    selected_ids.append(m["id"])
-                    st.rerun()
-            elif not cb and m["id"] in selected_ids:
-                selected_ids.remove(m["id"])
+# =======================================================================
+# STEP 0: AI-Assisted Carousel Creation
+# =======================================================================
+st.markdown("### AI Carousel Assistant")
+
+build_mode = st.radio(
+    "How do you want to build this carousel?",
+    ["AI-assisted (recommended)", "Manual selection"],
+    key="cb_mode",
+    horizontal=True,
+)
+
+if build_mode.startswith("AI"):
+    tab_themes, tab_custom = st.tabs(["Suggest Themes", "Custom Theme"])
+
+    # --- Tab 1: AI suggests themes ---
+    with tab_themes:
+        st.caption("Claude analyzes your media library and suggests carousel themes.")
+
+        if st.button("Suggest Carousel Themes", type="primary", key="cb_suggest"):
+            with st.spinner("Claude is brainstorming carousel ideas..."):
+                try:
+                    result = suggest_carousel_themes(all_media, count=5)
+                    st.session_state["cb_ai_themes"] = result.get("themes", [])
+                    usage = result.get("_usage", {})
+                    st.caption(f"Cost: ${usage.get('cost_usd', 0):.4f}")
+                except Exception as e:
+                    st.error(f"Theme suggestion failed: {e}")
+
+        themes = st.session_state.get("cb_ai_themes", [])
+        if themes:
+            for i, theme in enumerate(themes):
+                with st.expander(
+                    f"**{theme.get('title', f'Theme {i+1}')}** — "
+                    f"{theme.get('slide_count', '?')} slides | "
+                    f"{', '.join(theme.get('categories', []))}",
+                    expanded=(i == 0),
+                ):
+                    st.markdown(theme.get("description", ""))
+                    st.caption(f"Ordering: {theme.get('ordering', '?')}")
+                    st.caption(f"Hashtags: {theme.get('hashtag_seed', '')}")
+
+                    if st.button("Use this theme", key=f"cb_use_theme_{i}", type="primary"):
+                        st.session_state["cb_ai_theme_title"] = theme.get("title", "")
+                        st.session_state["cb_ai_theme_desc"] = theme.get("description", "")
+                        st.session_state["cb_ai_theme_ordering"] = theme.get("ordering", "best-first")
+                        st.session_state["cb_ai_theme_count"] = theme.get("slide_count", 5)
+                        st.session_state["cb_ai_theme_cats"] = theme.get("categories", [])
+                        st.session_state["_cb_select_images"] = True
+                        st.rerun()
+
+    # --- Tab 2: Custom theme ---
+    with tab_custom:
+        st.caption("Describe your own carousel theme and let AI pick the images.")
+        custom_title = st.text_input("Theme title", key="cb_custom_title",
+                                     placeholder="e.g., 'Top 5 Sitges Beaches'")
+        custom_desc = st.text_area("Description", key="cb_custom_desc", height=80,
+                                   placeholder="What should this carousel show? E.g., 'A visual tour of the hotel rooms, from smallest to largest suite'")
+        custom_count = st.slider("Number of slides", 2, 10, 5, key="cb_custom_count")
+        custom_ordering = st.selectbox("Ordering", [
+            "best-first (most eye-catching hook)",
+            "narrative arc (beginning \u2192 middle \u2192 end)",
+            "chronological (morning \u2192 evening)",
+            "variety (alternate categories)",
+        ], key="cb_custom_ordering")
+
+        if st.button("AI Select Images", type="primary", key="cb_custom_select",
+                      disabled=not custom_title):
+            st.session_state["cb_ai_theme_title"] = custom_title
+            st.session_state["cb_ai_theme_desc"] = custom_desc
+            st.session_state["cb_ai_theme_ordering"] = custom_ordering.split("(")[0].strip()
+            st.session_state["cb_ai_theme_count"] = custom_count
+            st.session_state["cb_ai_theme_cats"] = []
+            st.session_state["_cb_select_images"] = True
+            st.rerun()
+
+    # --- AI Image Selection (triggered from either tab) ---
+    if st.session_state.pop("_cb_select_images", False):
+        theme_title = st.session_state.get("cb_ai_theme_title", "")
+        theme_desc = st.session_state.get("cb_ai_theme_desc", "")
+        theme_ordering = st.session_state.get("cb_ai_theme_ordering", "best-first")
+        theme_count = st.session_state.get("cb_ai_theme_count", 5)
+        theme_cats = st.session_state.get("cb_ai_theme_cats", [])
+
+        # Filter candidates by theme categories if specified
+        candidates = list(all_media)
+        if theme_cats:
+            cat_set = set(theme_cats)
+            cat_filtered = [m for m in candidates if m.get("category") in cat_set]
+            if len(cat_filtered) >= theme_count:
+                candidates = cat_filtered
+
+        with st.spinner(f"Claude is selecting {theme_count} images for '{theme_title}'..."):
+            try:
+                sel_result = select_carousel_images(
+                    theme_title=theme_title,
+                    theme_description=theme_desc,
+                    ordering=theme_ordering,
+                    slide_count=theme_count,
+                    media_list=candidates,
+                )
+                selected = sel_result.get("selected", [])
+                new_ids = [s["media_id"] for s in sorted(selected, key=lambda x: x.get("position", 0))]
+
+                # Validate IDs via dict lookup (no DB calls)
+                valid_ids = [mid for mid in new_ids if mid in media_by_id]
+                if valid_ids:
+                    st.session_state["cb_selected_ids"] = valid_ids
+                    selected_ids = valid_ids
+                    st.session_state["cb_title"] = sel_result.get("carousel_title", theme_title)
+                    st.session_state["cb_ai_selection_reasons"] = {
+                        s["media_id"]: s.get("reason", "") for s in selected
+                    }
+                    st.success(f"Selected {len(valid_ids)} images! Hook: {sel_result.get('hook_note', '')}")
+                else:
+                    st.error("AI selection returned no valid image IDs.")
+
+                usage = sel_result.get("_usage", {})
+                st.caption(f"Cost: ${usage.get('cost_usd', 0):.4f}")
+            except Exception as e:
+                st.error(f"AI image selection failed: {e}")
+
+    st.divider()
+
+# =======================================================================
+# STEP 1: Manual Image Picker (paginated gallery)
+# =======================================================================
+GALLERY_PAGE_SIZE = 50
+
+with st.expander(
+    f"Image Gallery ({len(filtered_media)} images, {len(selected_ids)} selected)",
+    expanded=(build_mode.startswith("Manual") and len(selected_ids) < 2),
+):
+    # Pagination
+    total_pages = max(1, (len(filtered_media) + GALLERY_PAGE_SIZE - 1) // GALLERY_PAGE_SIZE)
+    page_idx = st.session_state.get("cb_gallery_page", 0)
+    if page_idx >= total_pages:
+        page_idx = 0
+
+    start = page_idx * GALLERY_PAGE_SIZE
+    page_media = filtered_media[start : start + GALLERY_PAGE_SIZE]
+
+    if total_pages > 1:
+        pc1, pc2, pc3 = st.columns([1, 2, 1])
+        with pc1:
+            if page_idx > 0 and st.button("Previous", key="cb_gal_prev"):
+                st.session_state["cb_gallery_page"] = page_idx - 1
+                st.rerun()
+        with pc2:
+            st.caption(f"Page {page_idx + 1} of {total_pages}")
+        with pc3:
+            if page_idx < total_pages - 1 and st.button("Next", key="cb_gal_next"):
+                st.session_state["cb_gallery_page"] = page_idx + 1
                 st.rerun()
 
-st.divider()
+    COLS = 5
+    selected_set = set(selected_ids)  # O(1) lookup
+    rows = [page_media[i:i + COLS] for i in range(0, len(page_media), COLS)]
 
-# --- Selected images with reorder ---
-st.markdown("### 2. Selected Images & Order")
+    for row_items in rows:
+        cols = st.columns(COLS)
+        for idx, m in enumerate(row_items):
+            with cols[idx]:
+                mid = m["id"]
+                is_selected = mid in selected_set
 
-if not selected_ids:
-    st.info("Select at least 2 images from the gallery above.")
-elif len(selected_ids) < 2:
-    st.warning("Carousel requires at least 2 images. Select one more.")
+                if m.get("thumbnail_url"):
+                    st.image(m["thumbnail_url"], width=120)
+                else:
+                    st.caption(m.get("file_name", "?")[:20])
+
+                if is_selected:
+                    st.markdown(f"**#{selected_ids.index(mid) + 1}**")
+
+                cb = st.checkbox(
+                    m.get("file_name", "?")[:18],
+                    value=is_selected,
+                    key=f"cb_sel_{mid}",
+                )
+                if cb and mid not in selected_set:
+                    if len(selected_ids) < 10:
+                        selected_ids.append(mid)
+                        st.rerun()
+                elif not cb and mid in selected_set:
+                    selected_ids.remove(mid)
+                    st.rerun()
+
+# =======================================================================
+# STEP 2: Selected Images & Reorder
+# =======================================================================
+st.markdown(f"### Selected Images ({len(selected_ids)})")
+
+if len(selected_ids) < 2:
+    remaining = 2 - len(selected_ids)
+    st.info(f"Select {remaining} more image{'s' if remaining > 1 else ''} to build a carousel.")
 else:
-    # Show selected images as numbered strip
+    ai_reasons = st.session_state.get("cb_ai_selection_reasons", {})
     n_selected = len(selected_ids)
     strip_cols = st.columns(min(n_selected, 6))
 
     for i, mid in enumerate(selected_ids):
         col_idx = i % min(n_selected, 6)
         with strip_cols[col_idx]:
-            m = fetch_media_by_id(mid)
+            m = media_by_id.get(mid)
             if m:
                 try:
                     thumb = _download_thumb(m["drive_file_id"])
                     st.image(thumb, width=100)
                 except Exception:
                     st.caption(m.get("file_name", "?")[:15])
-            st.caption(f"**#{i + 1}** {(m or {}).get('file_name', '?')[:12]}")
+                st.caption(f"**#{i + 1}** {m.get('file_name', '?')[:12]}")
+            else:
+                st.caption(f"**#{i + 1}** (missing)")
 
-            # Reorder buttons
+            if mid in ai_reasons:
+                st.caption(f"*{ai_reasons[mid][:60]}*")
+
             bc1, bc2, bc3 = st.columns(3)
             with bc1:
                 if i > 0 and st.button(":material/arrow_upward:", key=f"cb_up_{mid}"):
@@ -136,24 +315,20 @@ else:
 
     st.divider()
 
-    # --- Preview with dots ---
-    st.markdown("### 3. Preview")
+    # =======================================================================
+    # STEP 3: Preview
+    # =======================================================================
+    st.markdown("### Preview")
 
-    # Render a simple carousel preview
     from app.components.ig_preview import render_ig_preview_carousel
 
-    # Load first image for preview
-    first_media = fetch_media_by_id(selected_ids[0])
-    if first_media and first_media.get("drive_file_id"):
+    # Collect b64 images (uses cached _download_thumb)
+    first_m = media_by_id.get(selected_ids[0])
+    if first_m and first_m.get("drive_file_id"):
         try:
-            import base64
-            first_bytes = _download_thumb(first_media["drive_file_id"])
-            first_b64 = base64.b64encode(first_bytes).decode()
-
-            # Load all images b64 for carousel preview
             all_b64 = []
             for mid in selected_ids:
-                m = fetch_media_by_id(mid)
+                m = media_by_id.get(mid)
                 if m and m.get("drive_file_id"):
                     try:
                         b = _download_thumb(m["drive_file_id"])
@@ -175,8 +350,38 @@ else:
 
     st.divider()
 
-    # --- Captions ---
-    st.markdown("### 4. Captions & Hashtags")
+    # =======================================================================
+    # STEP 4: Captions & Hashtags (manual + AI)
+    # =======================================================================
+    st.markdown("### Captions & Hashtags")
+
+    # --- AI Caption Generation ---
+    if st.button("AI Generate Captions", type="secondary", key="cb_ai_captions"):
+        theme_title = st.session_state.get("cb_ai_theme_title", "") or st.session_state.get("cb_title", "Hotel carousel")
+        theme_desc = st.session_state.get("cb_ai_theme_desc", "") or "Carousel post for Hotel Noucentista"
+
+        # Use pre-fetched media objects (no extra DB calls)
+        sel_media = [media_by_id[mid] for mid in selected_ids if mid in media_by_id]
+
+        with st.spinner("Claude is writing carousel captions..."):
+            try:
+                cap_result = generate_carousel_captions(
+                    theme_title=theme_title,
+                    theme_description=theme_desc,
+                    selected_media=sel_media,
+                )
+                st.session_state["cb_caption_es"] = cap_result.get("caption_es", "")
+                st.session_state["cb_caption_en"] = cap_result.get("caption_en", "")
+                st.session_state["cb_caption_fr"] = cap_result.get("caption_fr", "")
+                hashtags = cap_result.get("hashtags", [])
+                if hashtags:
+                    st.session_state["cb_hashtags"] = ", ".join(hashtags)
+                    st.session_state["cb_hashtags_list"] = hashtags
+                usage = cap_result.get("_usage", {})
+                st.success(f"Captions generated! (${usage.get('cost_usd', 0):.4f})")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Caption generation failed: {e}")
 
     cap_es = st.text_area("Caption (ES)", height=100, key="cb_caption_es",
                           placeholder="Caption en espa\u00f1ol...")
@@ -198,8 +403,10 @@ else:
 
     st.divider()
 
-    # --- Actions ---
-    st.markdown("### 5. Save & Publish")
+    # =======================================================================
+    # STEP 5: Save & Publish
+    # =======================================================================
+    st.markdown("### Save & Publish")
 
     title = st.text_input("Carousel title (internal)", key="cb_title",
                           placeholder="e.g., 'Top 5 Sitges Beaches'")
@@ -225,7 +432,6 @@ else:
     with ac2:
         if st.button("Publish to Instagram", key="cb_publish",
                       disabled=len(selected_ids) < 2):
-            # Confirmation step
             st.session_state["cb_confirm_publish"] = True
 
     if st.session_state.get("cb_confirm_publish"):
@@ -236,10 +442,9 @@ else:
                 st.session_state.pop("cb_confirm_publish", None)
                 with st.spinner("Publishing carousel to Instagram..."):
                     try:
-                        # Upload each image to Supabase Storage
                         image_urls = []
                         for mid in selected_ids:
-                            m = fetch_media_by_id(mid)
+                            m = media_by_id.get(mid)
                             if m and m.get("drive_file_id"):
                                 img_bytes = _download_thumb(m["drive_file_id"])
                                 url = upload_to_supabase_storage(
@@ -249,7 +454,6 @@ else:
                                 )
                                 image_urls.append(url)
 
-                        # Build caption (stacked multilingual)
                         caption_parts = []
                         if cap_es:
                             caption_parts.append(cap_es)
@@ -279,7 +483,9 @@ else:
                 st.session_state.pop("cb_confirm_publish", None)
                 st.rerun()
 
-# --- Saved drafts list ---
+# =======================================================================
+# Saved Drafts
+# =======================================================================
 st.divider()
 st.markdown("### Saved Drafts")
 
@@ -294,11 +500,9 @@ else:
         _color = _status_colors.get(d["status"], "gray")
         with st.expander(
             f":{_color}[{d['status'].upper()}] {d.get('title', 'Untitled')} "
-            f"({len(d.get('media_ids', []))} images) — {d.get('created_at', '?')[:16]}"
+            f"({len(d.get('media_ids', []))} images) \u2014 {d.get('created_at', '?')[:16]}"
         ):
             st.caption(f"ID: {d['id'][:12]}...")
-            n_images = len(d.get("media_ids", []))
-            st.caption(f"Images: {n_images}")
             if d.get("caption_es"):
                 st.text(d["caption_es"][:200])
             if d.get("hashtags"):

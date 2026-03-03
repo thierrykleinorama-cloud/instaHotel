@@ -4,7 +4,14 @@ CRUD helpers for the carousel_drafts table.
 from datetime import datetime, timezone
 from typing import Optional
 
+import streamlit as st
+
 from src.database import get_supabase, TABLE_CAROUSEL_DRAFTS
+
+
+def _clear_drafts_cache():
+    """Clear the cached drafts list after mutations."""
+    fetch_carousel_drafts.clear()
 
 
 def save_carousel_draft(
@@ -28,12 +35,14 @@ def save_carousel_draft(
     }
     try:
         result = client.table(TABLE_CAROUSEL_DRAFTS).insert(row).execute()
+        _clear_drafts_cache()
         return result.data[0]["id"] if result.data else None
     except Exception as e:
         print(f"Carousel draft save failed: {e}")
         return None
 
 
+@st.cache_data(ttl=120)
 def fetch_carousel_drafts(
     status: str = "draft",
     limit: int = 50,
@@ -71,6 +80,7 @@ def update_carousel_status(
         if status == "published":
             updates["published_at"] = datetime.now(timezone.utc).isoformat()
         client.table(TABLE_CAROUSEL_DRAFTS).update(updates).eq("id", carousel_id).execute()
+        _clear_drafts_cache()
         return True
     except Exception as e:
         print(f"Carousel status update failed: {e}")
@@ -103,6 +113,7 @@ def update_carousel_draft(
         if hashtags is not None:
             updates["hashtags"] = hashtags
         client.table(TABLE_CAROUSEL_DRAFTS).update(updates).eq("id", carousel_id).execute()
+        _clear_drafts_cache()
         return True
     except Exception as e:
         print(f"Carousel draft update failed: {e}")
@@ -114,6 +125,7 @@ def delete_carousel_draft(carousel_id: str) -> bool:
     client = get_supabase()
     try:
         client.table(TABLE_CAROUSEL_DRAFTS).delete().eq("id", carousel_id).execute()
+        _clear_drafts_cache()
         return True
     except Exception as e:
         print(f"Carousel draft delete failed: {e}")
