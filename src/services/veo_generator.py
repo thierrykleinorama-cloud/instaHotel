@@ -120,7 +120,7 @@ def veo_photo_to_video(
             number_of_videos=1,
             duration_seconds=duration,
             negative_prompt=negative_prompt,
-            person_generation="allow_all",
+            person_generation="allow_adult",
         ),
     )
 

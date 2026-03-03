@@ -32,6 +32,17 @@ page_title("Veo 3 Video", "Google Veo 3.1 photo-to-video generation")
 
 st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
 
+# --- Session state defaults (preserve across Rerun) ---
+for _key, _default in [
+    ("veo_motion_prompt", ""),
+    ("veo_prompt_edit", ""),
+    ("veo_ai_brief", ""),
+    ("veo_neg", "blurry, distorted, low quality, text overlay, watermark, AI artifacts, unrealistic proportions"),
+    ("veo_video_result", None),
+]:
+    if _key not in st.session_state:
+        st.session_state[_key] = _default
+
 # --- Media selector ---
 media, image_bytes = render_media_selector("veo")
 
@@ -117,7 +128,6 @@ motion_prompt = st.text_area(
 with st.expander("Negative prompt"):
     neg_prompt = st.text_input(
         "Negative prompt",
-        value="blurry, distorted, low quality, text overlay, watermark, AI artifacts, unrealistic proportions",
         key="veo_neg",
     )
 

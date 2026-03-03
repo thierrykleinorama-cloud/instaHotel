@@ -49,6 +49,9 @@ for _key, _default in [
     ("cb_hashtags_list", []),
     ("cb_title", ""),
     ("cb_ai_selection_reasons", {}),
+    ("cb_ai_themes", []),
+    ("cb_ai_theme_title", ""),
+    ("cb_ai_theme_desc", ""),
     ("cb_gallery_page", 0),
 ]:
     if _key not in st.session_state:
