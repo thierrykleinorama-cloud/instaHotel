@@ -37,8 +37,6 @@ def _download_thumb(drive_file_id: str) -> bytes:
 sidebar_css()
 page_title("Carousel Builder", "Multi-image Instagram carousel posts")
 
-st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
-
 # ---- Initialize session state defaults ----
 for _key, _default in [
     ("cb_selected_ids", []),

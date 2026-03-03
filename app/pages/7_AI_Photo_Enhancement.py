@@ -39,8 +39,6 @@ from src.services.vision_analyzer import get_raw_response as vision_reanalyze
 sidebar_css()
 page_title("AI Photo Enhancement", "Upscale, retouch, or outpaint your photos")
 
-st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
-
 # --- Shared media selector ---
 media, raw_bytes = render_media_selector("enh")
 

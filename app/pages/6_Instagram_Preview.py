@@ -35,8 +35,6 @@ def _download_and_encode(drive_file_id: str) -> str:
 sidebar_css()
 page_title("Instagram Preview", "Generate Instagram captions in 3 languages")
 
-st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
-
 # --- Shared media selector ---
 media, image_bytes = render_media_selector("cap")
 

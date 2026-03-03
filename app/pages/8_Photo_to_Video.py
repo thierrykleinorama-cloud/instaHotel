@@ -93,8 +93,6 @@ def _apply_feedback(item_id, item_type, status, feedback, rating):
 sidebar_css()
 page_title("Photo to Video", "Generate videos, scenarios & add music")
 
-st.page_link("pages/5_AI_Lab.py", label="Back to AI Lab", icon=":material/arrow_back:")
-
 # --- Media selector (images only — source for creative transforms) ---
 # Restore media_id from URL params (survives page reload/crash)
 _qp = st.query_params
