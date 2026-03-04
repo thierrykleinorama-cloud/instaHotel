@@ -4,9 +4,38 @@ Prompts for AI-powered carousel generation.
 - Image selection + ordering for a given theme
 - Multilingual carousel captions
 """
+from src.prompts.sitges_context import (
+    SITGES_OVERVIEW,
+    SITGES_BEACHES,
+    SITGES_EVENTS,
+    SITGES_GASTRONOMY,
+    SITGES_CULTURE,
+    CONTENT_ANGLES,
+)
 
-CAROUSEL_THEME_SYSTEM = """You are the social media strategist for Hôtel Noucentista, a boutique Art Nouveau hotel in Sitges (Barcelona).
+# Build a concise Sitges brief for carousel prompts (not the full 16K)
+_SITGES_BRIEF = f"""{SITGES_OVERVIEW}
+
+KEY CONTENT ANGLES (for carousel theme ideas):
+{chr(10).join(f"- {v['label']}: {', '.join(v['examples'][:3])}" for v in CONTENT_ANGLES.values())}
+
+NOTABLE EVENTS: Carnival (Feb), Jazz Antic (Mar), Sant Jordi (Apr), Sitges Pride (Jun),
+Corpus Christi (Jun), Festa Major (Aug), Film Festival (Oct), Vendimia (Sep-Oct).
+
+BEACHES: 19 beaches from Sant Sebastià (iconic), Garraf (painted houses), Balmins (hidden cove),
+Home Mort (turquoise nudist cove) to Botigues (1.5km family beach).
+
+GASTRONOMY: Xató (signature Sitges salad), Malvasia wine, vermouth ritual, fideuà, chiringuito culture.
+
+CULTURE: Cau Ferrat museum (Rusiñol), Maricel museum, Modernisme architecture, gallery district.
+"""
+
+CAROUSEL_THEME_SYSTEM = f"""You are the social media strategist for Hôtel Noucentista, a boutique Art Nouveau hotel in Sitges (Barcelona).
 You specialize in Instagram carousel posts that drive engagement through storytelling, listicles, and visual sequences.
+
+SITGES CONTEXT (use this to suggest relevant, locally-informed themes):
+{_SITGES_BRIEF}
+
 Respond ONLY with valid JSON (no markdown, no comments)."""
 
 CAROUSEL_THEME_TEMPLATE = """Based on the available media library, suggest {count} carousel themes that would perform well on Instagram.
@@ -17,7 +46,7 @@ Available media summary:
 - Top elements: {top_elements}
 - Seasons covered: {seasons}
 
-Hotel context: Boutique Art Nouveau hotel in Sitges, near Barcelona. Mediterranean charm, personalized service, gastronomic experiences, beach proximity.
+Hotel context: Boutique Art Nouveau hotel in the heart of Sitges old town (Carrer de l'Illa de Cuba). Mediterranean charm, personalized service, artistic heritage, walking distance to all beaches, museums, and restaurants.
 
 For each theme, suggest:
 1. A catchy title (for internal use)
@@ -73,8 +102,12 @@ Return JSON:
   "hook_note": "why the first image works as a hook"
 }}"""
 
-CAROUSEL_CAPTION_SYSTEM = """You are the community manager for Hôtel Noucentista, a boutique Art Nouveau hotel in Sitges (Barcelona).
+CAROUSEL_CAPTION_SYSTEM = f"""You are the community manager for Hôtel Noucentista, a boutique Art Nouveau hotel in Sitges (Barcelona).
 You write authentic, warm, never-corporate Instagram captions. You are fluent in Spanish, English, and French.
+
+SITGES CONTEXT (use to write locally-informed, specific captions — mention real places, events, traditions):
+{_SITGES_BRIEF}
+
 Respond ONLY with valid JSON (no markdown, no comments)."""
 
 CAROUSEL_CAPTION_TEMPLATE = """Write Instagram carousel captions for this post:
