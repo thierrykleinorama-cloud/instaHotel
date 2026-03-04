@@ -292,6 +292,20 @@ def clear_publish_error(entry_id: str) -> bool:
         return False
 
 
+def update_calendar_creative_status(entry_id: str, creative_status: str | None) -> bool:
+    """Update creative pipeline status on a calendar entry."""
+    client = get_supabase()
+    try:
+        client.table(TABLE_EDITORIAL_CALENDAR).update(
+            {"creative_status": creative_status}
+        ).eq("id", entry_id).execute()
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        print(f"Creative status update failed: {e}")
+        return False
+
+
 def fetch_recent_media_ids(lookback_days: int = 7) -> set[str]:
     """Get media IDs used in the calendar within the last N days."""
     client = get_supabase()

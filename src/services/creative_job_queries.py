@@ -14,6 +14,7 @@ def save_scenario_job(
     cost_usd: float = 0,
     params: dict | None = None,
     model: str = "claude-sonnet-4-6",
+    calendar_id: str | None = None,
 ) -> dict:
     """Persist scenario generation results. Returns the created creative_jobs row.
     Also saves individual scenarios to generated_scenarios table."""
@@ -27,13 +28,15 @@ def save_scenario_job(
         "cost_usd": cost_usd,
         "result_url": json.dumps(scenarios),  # store scenario JSON in result_url
     }
+    if calendar_id:
+        row["calendar_id"] = calendar_id
     result = client.table(TABLE_CREATIVE_JOBS).insert(row).execute()
 
     # Also save individual scenarios to generated_scenarios
     per_cost = cost_usd / max(len(scenarios), 1)
     scenario_rows = []
     for s in scenarios:
-        scenario_rows.append({
+        sr = {
             "source_media_id": source_media_id,
             "title": s.get("title", ""),
             "description": s.get("description", ""),
@@ -43,7 +46,10 @@ def save_scenario_job(
             "generation_params": params or {},
             "model": model,
             "cost_usd": per_cost,
-        })
+        }
+        if calendar_id:
+            sr["calendar_id"] = calendar_id
+        scenario_rows.append(sr)
     if scenario_rows:
         try:
             client.table(TABLE_GENERATED_SCENARIOS).insert(scenario_rows).execute()
@@ -61,6 +67,7 @@ def save_video_job(
     provider: str = "replicate",
     params: dict | None = None,
     drive_file_id: str | None = None,
+    calendar_id: str | None = None,
 ) -> dict:
     """Persist video generation result. Returns the created row."""
     client = get_supabase()
@@ -78,6 +85,8 @@ def save_video_job(
     }
     if drive_file_id:
         row["drive_file_id"] = drive_file_id
+    if calendar_id:
+        row["calendar_id"] = calendar_id
     result = client.table(TABLE_CREATIVE_JOBS).insert(row).execute()
     return result.data[0] if result.data else {}
 
@@ -89,6 +98,7 @@ def save_music_job(
     cost_usd: float = 0,
     params: dict | None = None,
     drive_file_id: str | None = None,
+    calendar_id: str | None = None,
 ) -> dict:
     """Persist music generation result. Returns the created row.
     Also saves to generated_music table."""
@@ -107,6 +117,8 @@ def save_music_job(
     }
     if drive_file_id:
         row["drive_file_id"] = drive_file_id
+    if calendar_id:
+        row["calendar_id"] = calendar_id
     result = client.table(TABLE_CREATIVE_JOBS).insert(row).execute()
 
     # Also save to generated_music table
@@ -122,6 +134,8 @@ def save_music_job(
     }
     if drive_file_id:
         music_row["drive_file_id"] = drive_file_id
+    if calendar_id:
+        music_row["calendar_id"] = calendar_id
     try:
         client.table(TABLE_GENERATED_MUSIC).insert(music_row).execute()
     except Exception:

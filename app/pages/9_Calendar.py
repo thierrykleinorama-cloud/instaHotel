@@ -484,9 +484,18 @@ else:
         caption_tag = " | captions" if has_content else ""
         _focus = entry.get("focus", "hotel")
         _focus_tag = " | Destination" if _focus == "destination" else ""
+        # Creative pipeline status badge
+        _cs = entry.get("creative_status")
+        _CREATIVE_BADGES = {
+            "scenarios_generated": ":violet[Scenarios]",
+            "video_generated": ":blue[Video]",
+            "music_generated": ":orange[Music]",
+            "complete": ":green[Complete]",
+        }
+        _creative_tag = f" | {_CREATIVE_BADGES[_cs]}" if _cs in _CREATIVE_BADGES else ""
 
         _is_expanded = st.session_state.get("cal_expanded_id") == entry["id"]
-        with st.expander(f":{color}[●] {post_date} — S{slot} | {cat}{_focus_tag} | {score_str}pts | {status}{caption_tag}", expanded=_is_expanded):
+        with st.expander(f":{color}[●] {post_date} — S{slot} | {cat}{_focus_tag} | {score_str}pts | {status}{caption_tag}{_creative_tag}", expanded=_is_expanded):
             c1, c2 = st.columns([2, 1])
 
             with c1:
