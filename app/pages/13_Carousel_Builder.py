@@ -4,6 +4,7 @@ Build multi-image carousel posts for Instagram — manual or AI-assisted.
 """
 import base64
 import io
+import os
 import sys
 from pathlib import Path
 
@@ -12,13 +13,15 @@ if _root not in sys.path:
     sys.path.insert(0, _root)
 
 import streamlit as st
+from PIL import Image
 
 from app.components.ui import sidebar_css, page_title
 from src.services.media_queries import fetch_all_media, fetch_distinct_values
-from src.services.google_drive import download_file_bytes
+from src.services.google_drive import download_file_bytes, get_drive_service
 from src.services.carousel_queries import (
     save_carousel_draft,
     fetch_carousel_drafts,
+    update_carousel_feedback,
     delete_carousel_draft,
 )
 from src.services.carousel_ai import (
@@ -29,25 +32,84 @@ from src.services.carousel_ai import (
 from src.services.publisher import publish_carousel, upload_to_supabase_storage
 
 
+# --- HEIF support (lazy, once per session) ---
+_heif_registered = False
+
+def _ensure_heif():
+    global _heif_registered
+    if not _heif_registered:
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        except ImportError:
+            pass
+        _heif_registered = True
+
+
+# --- Thumbnail helpers (same approach as Gallery page / media_grid.py) ---
+THUMB_SIZE = 300
+
+@st.cache_data(ttl=3600)
+def _fetch_thumbnail_b64(file_id: str) -> str:
+    """Download a Drive file, resize to thumbnail, return base64 JPEG. Cached 1h.
+    Two-tier: Drive thumbnailLink (fast) → fallback to Pillow resize."""
+    # Tier 1: Drive thumbnail API
+    try:
+        service = get_drive_service()
+        meta = service.files().get(fileId=file_id, fields="thumbnailLink").execute()
+        link = meta.get("thumbnailLink")
+        if link:
+            link = link.replace("=s220", f"=s{THUMB_SIZE}")
+            import urllib.request
+            data = urllib.request.urlopen(link, timeout=10).read()
+            return base64.b64encode(data).decode()
+    except Exception:
+        pass
+
+    # Tier 2: Download + Pillow resize (handles HEIC)
+    try:
+        _ensure_heif()
+        raw = download_file_bytes(file_id)
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        img.thumbnail((THUMB_SIZE, THUMB_SIZE), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=80)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ""
+
+
+@st.cache_data(ttl=3600)
+def _fetch_thumbnails_batch(file_ids: tuple[str, ...]) -> dict[str, str]:
+    """Fetch base64 thumbnails for a batch of file IDs."""
+    result = {}
+    for fid in file_ids:
+        result[fid] = _fetch_thumbnail_b64(fid)
+    return result
+
+
 @st.cache_data(ttl=300)
 def _download_thumb(drive_file_id: str) -> bytes:
     return download_file_bytes(drive_file_id)
 
 
-def _to_jpeg_b64(raw_bytes: bytes) -> str:
-    """Convert any image format (HEIC, PNG, JPEG) to JPEG base64 string."""
-    from PIL import Image
-    try:
-        from pillow_heif import register_heif_opener
-        register_heif_opener()
-    except ImportError:
-        pass
+def _to_jpeg_bytes(raw_bytes: bytes) -> bytes:
+    """Convert any image format (HEIC, PNG, JPEG) to JPEG bytes."""
+    _ensure_heif()
     img = Image.open(io.BytesIO(raw_bytes))
     if img.mode not in ("RGB",):
         img = img.convert("RGB")
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
-    return base64.b64encode(buf.getvalue()).decode()
+    return buf.getvalue()
+
+
+def _to_jpeg_b64(raw_bytes: bytes) -> str:
+    """Convert any image format (HEIC, PNG, JPEG) to JPEG base64 string."""
+    return base64.b64encode(_to_jpeg_bytes(raw_bytes)).decode()
 
 
 # ---- Page setup ----
@@ -68,6 +130,10 @@ for _key, _default in [
     ("cb_ai_theme_title", ""),
     ("cb_ai_theme_desc", ""),
     ("cb_gallery_page", 0),
+    # Separate storage keys for AI-generated captions (not tied to widgets)
+    ("_cb_gen_caption_es", ""),
+    ("_cb_gen_caption_en", ""),
+    ("_cb_gen_caption_fr", ""),
 ]:
     if _key not in st.session_state:
         st.session_state[_key] = _default
@@ -255,6 +321,11 @@ with st.expander(
                 st.session_state["cb_gallery_page"] = page_idx + 1
                 st.rerun()
 
+    # Batch-fetch thumbnails for visible page (Drive API + HEIC-safe)
+    _page_file_ids = tuple(m["drive_file_id"] for m in page_media if m.get("drive_file_id"))
+    with st.spinner("Loading thumbnails..."):
+        _page_thumbs = _fetch_thumbnails_batch(_page_file_ids)
+
     COLS = 5
     selected_set = set(selected_ids)  # O(1) lookup
     rows = [page_media[i:i + COLS] for i in range(0, len(page_media), COLS)]
@@ -265,14 +336,17 @@ with st.expander(
             with cols[idx]:
                 mid = m["id"]
                 is_selected = mid in selected_set
+                fid = m.get("drive_file_id", "")
+                b64 = _page_thumbs.get(fid, "")
 
-                # Show real thumbnail from Drive
-                if m.get("drive_file_id"):
-                    try:
-                        thumb_bytes = _download_thumb(m["drive_file_id"])
-                        st.image(thumb_bytes, width=120)
-                    except Exception:
-                        st.caption(m.get("file_name", "?")[:20])
+                # Show thumbnail as base64 data URI (handles HEIC, fast)
+                if b64:
+                    border = "3px solid #ff6b35" if is_selected else "none"
+                    st.markdown(
+                        f'<img src="data:image/jpeg;base64,{b64}" '
+                        f'style="width:120px;border-radius:6px;border:{border};" />',
+                        unsafe_allow_html=True,
+                    )
                 else:
                     st.caption(m.get("file_name", "?")[:20])
 
@@ -304,7 +378,15 @@ else:
     ai_reasons = st.session_state.get("cb_ai_selection_reasons", {})
     n_selected = len(selected_ids)
 
-    # Show images in a clean grid with buttons aligned under each image
+    # Batch-fetch thumbnails for selected images
+    _sel_file_ids = tuple(
+        media_by_id[mid]["drive_file_id"]
+        for mid in selected_ids
+        if mid in media_by_id and media_by_id[mid].get("drive_file_id")
+    )
+    _sel_thumbs = _fetch_thumbnails_batch(_sel_file_ids)
+
+    # Show images in a numbered horizontal strip
     img_cols = st.columns(min(n_selected, 5))
 
     for i, mid in enumerate(selected_ids):
@@ -312,10 +394,15 @@ else:
         with img_cols[col_idx]:
             m = media_by_id.get(mid)
             if m:
-                try:
-                    thumb = _download_thumb(m["drive_file_id"])
-                    st.image(thumb, use_container_width=True)
-                except Exception:
+                fid = m.get("drive_file_id", "")
+                b64 = _sel_thumbs.get(fid, "")
+                if b64:
+                    st.markdown(
+                        f'<img src="data:image/jpeg;base64,{b64}" '
+                        f'style="width:100%;border-radius:6px;" />',
+                        unsafe_allow_html=True,
+                    )
+                else:
                     st.caption(m.get("file_name", "?")[:15])
                 st.caption(f"**#{i + 1}** {m.get('file_name', '?')[:15]}")
             else:
@@ -324,20 +411,19 @@ else:
             if mid in ai_reasons:
                 st.caption(f"*{ai_reasons[mid][:60]}*")
 
-            # Buttons in a single row: up | down | remove
-            btn_cols = st.columns([1, 1, 1])
-            with btn_cols[0]:
-                if i > 0 and st.button("\u2191", key=f"cb_up_{mid}", help="Move up"):
+            # Compact button row using use_container_width for even sizing
+            bc1, bc2, bc3 = st.columns(3)
+            if i > 0:
+                if bc1.button("\u25c0", key=f"cb_up_{mid}", help="Move left", use_container_width=True):
                     selected_ids[i], selected_ids[i - 1] = selected_ids[i - 1], selected_ids[i]
                     st.rerun()
-            with btn_cols[1]:
-                if i < n_selected - 1 and st.button("\u2193", key=f"cb_dn_{mid}", help="Move down"):
+            if i < n_selected - 1:
+                if bc2.button("\u25b6", key=f"cb_dn_{mid}", help="Move right", use_container_width=True):
                     selected_ids[i], selected_ids[i + 1] = selected_ids[i + 1], selected_ids[i]
                     st.rerun()
-            with btn_cols[2]:
-                if st.button("\u2717", key=f"cb_rm_{mid}", help="Remove"):
-                    selected_ids.remove(mid)
-                    st.rerun()
+            if bc3.button("\u2717", key=f"cb_rm_{mid}", help="Remove", use_container_width=True):
+                selected_ids.remove(mid)
+                st.rerun()
 
     st.divider()
 
@@ -362,17 +448,19 @@ else:
                     except Exception:
                         pass
 
-            # Build stacked multilingual caption for preview
+            # Build stacked multilingual caption for preview.
+            # Read from BOTH widget keys AND backup keys (widget keys
+            # only have values after their text_area renders further down).
             caption_parts = []
-            cap_es = st.session_state.get("cb_caption_es", "")
-            cap_en = st.session_state.get("cb_caption_en", "")
-            cap_fr = st.session_state.get("cb_caption_fr", "")
-            if cap_es:
-                caption_parts.append(cap_es)
-            if cap_en:
-                caption_parts.append(f"\U0001f1ec\U0001f1e7 {cap_en}")
-            if cap_fr:
-                caption_parts.append(f"\U0001f1eb\U0001f1f7 {cap_fr}")
+            _pv_es = st.session_state.get("cb_caption_es", "") or st.session_state.get("_cb_gen_caption_es", "")
+            _pv_en = st.session_state.get("cb_caption_en", "") or st.session_state.get("_cb_gen_caption_en", "")
+            _pv_fr = st.session_state.get("cb_caption_fr", "") or st.session_state.get("_cb_gen_caption_fr", "")
+            if _pv_es:
+                caption_parts.append(_pv_es)
+            if _pv_en:
+                caption_parts.append(f"\U0001f1ec\U0001f1e7 {_pv_en}")
+            if _pv_fr:
+                caption_parts.append(f"\U0001f1eb\U0001f1f7 {_pv_fr}")
             caption_text = "\n\n".join(caption_parts)
 
             hashtags_text = " ".join(f"#{h}" for h in st.session_state.get("cb_hashtags_list", []))
@@ -385,6 +473,208 @@ else:
             st.components.v1.html(html, height=height)
         except Exception as e:
             st.warning(f"Preview unavailable: {e}")
+
+    st.divider()
+
+    # =======================================================================
+    # STEP 3b: Export as Reel (image slideshow + optional music)
+    # =======================================================================
+    st.markdown("### Export as Reel")
+    st.caption("Stitch selected images into a video slideshow with Ken Burns effect, optionally add music.")
+
+    # Initialize session state for reel
+    for _rk, _rv in [
+        ("cb_reel_bytes", None),
+        ("cb_reel_duration", 0.0),
+        ("cb_reel_cost", 0.0),
+    ]:
+        if _rk not in st.session_state:
+            st.session_state[_rk] = _rv
+
+    rc1, rc2 = st.columns(2)
+    with rc1:
+        reel_duration = st.slider(
+            "Duration per slide (seconds)", 2.0, 5.0, 3.0, 0.5,
+            key="cb_reel_slide_dur",
+        )
+    with rc2:
+        reel_aspect = st.selectbox(
+            "Aspect ratio",
+            ["9:16 (Reel)", "4:5 (Feed)"],
+            key="cb_reel_aspect",
+        )
+
+    reel_add_music = st.checkbox("Add background music", key="cb_reel_music")
+
+    if reel_add_music:
+        mc1, mc2 = st.columns(2)
+        with mc1:
+            reel_mood = st.selectbox(
+                "Mood",
+                ["Relaxed", "Upbeat", "Mediterranean", "Ambient", "Elegant"],
+                key="cb_reel_mood",
+            )
+        with mc2:
+            reel_custom_prompt = st.text_input(
+                "Or custom prompt (overrides mood)",
+                key="cb_reel_custom_prompt",
+                placeholder="e.g., soft piano with ocean waves",
+            )
+
+    # --- Generate Reel ---
+    if st.button("Generate Reel", type="primary", key="cb_gen_reel"):
+        from src.services.video_composer import images_to_slideshow, composite_video_audio
+
+        aspect = reel_aspect.split(" ")[0]  # "9:16" or "4:5"
+        total_cost = 0.0
+
+        with st.spinner("Creating slideshow..."):
+            try:
+                # Download all selected images
+                img_list = []
+                for mid in selected_ids:
+                    m = media_by_id.get(mid)
+                    if m and m.get("drive_file_id"):
+                        img_list.append(_download_thumb(m["drive_file_id"]))
+
+                if len(img_list) < 2:
+                    st.error("Need at least 2 downloadable images.")
+                else:
+                    # Step 1: Create slideshow
+                    slide_result = images_to_slideshow(
+                        img_list,
+                        duration_per_slide=reel_duration,
+                        aspect_ratio=aspect,
+                    )
+                    reel_bytes = slide_result["video_bytes"]
+                    reel_dur = slide_result["duration_sec"]
+
+                    # Step 2: Add music if requested
+                    if reel_add_music:
+                        from src.services.music_generator import generate_music
+
+                        prompt = reel_custom_prompt.strip() if reel_custom_prompt.strip() else None
+                        if not prompt:
+                            mood_prompts = {
+                                "Relaxed": "soft acoustic guitar, warm ambient pads, relaxing beach vibes",
+                                "Upbeat": "upbeat acoustic pop, light percussion, happy summer feeling",
+                                "Mediterranean": "Spanish guitar, light flamenco rhythm, sea breeze",
+                                "Ambient": "ambient pads, soft piano, minimalist peaceful atmosphere",
+                                "Elegant": "smooth jazz piano, subtle strings, luxury hotel lounge",
+                            }
+                            prompt = mood_prompts.get(reel_mood, mood_prompts["Relaxed"])
+
+                        st.spinner("Generating music...")
+                        music_duration = int(reel_dur) + 1  # slightly longer to cover
+                        music_result = generate_music(prompt, duration=music_duration)
+                        audio_bytes = music_result["audio_bytes"]
+                        total_cost += music_result.get("_cost", {}).get("cost_usd", 0)
+
+                        st.spinner("Compositing video + audio...")
+                        comp_result = composite_video_audio(
+                            reel_bytes, audio_bytes, volume=0.3,
+                        )
+                        reel_bytes = comp_result["video_bytes"]
+
+                    st.session_state["cb_reel_bytes"] = reel_bytes
+                    st.session_state["cb_reel_duration"] = reel_dur
+                    st.session_state["cb_reel_cost"] = total_cost
+                    st.rerun()
+
+            except Exception as e:
+                st.error(f"Reel generation failed: {e}")
+
+    # --- Show result if available ---
+    if st.session_state.get("cb_reel_bytes"):
+        reel_bytes = st.session_state["cb_reel_bytes"]
+        reel_dur = st.session_state.get("cb_reel_duration", 0)
+        reel_cost = st.session_state.get("cb_reel_cost", 0)
+
+        st.video(reel_bytes)
+        st.caption(
+            f"Duration: {reel_dur:.1f}s | "
+            f"Size: {len(reel_bytes) / 1024 / 1024:.1f} MB | "
+            f"Cost: ${reel_cost:.4f}"
+        )
+
+        dl1, dl2 = st.columns(2)
+        with dl1:
+            st.download_button(
+                "Download Reel MP4",
+                data=reel_bytes,
+                file_name="carousel_reel.mp4",
+                mime="video/mp4",
+                key="cb_dl_reel",
+            )
+        with dl2:
+            if st.button("Publish as Reel", key="cb_publish_reel"):
+                st.session_state["cb_confirm_publish_reel"] = True
+
+        if st.session_state.get("cb_confirm_publish_reel"):
+            st.warning("This will publish the reel to Instagram immediately.")
+            pr1, pr2 = st.columns(2)
+            with pr1:
+                if st.button("Confirm Publish Reel", type="primary", key="cb_confirm_reel_yes"):
+                    st.session_state.pop("cb_confirm_publish_reel", None)
+                    with st.spinner("Publishing reel to Instagram..."):
+                        try:
+                            from src.services.publisher import (
+                                create_ig_container,
+                                poll_container_status,
+                                publish_container,
+                            )
+
+                            # Upload MP4 to Supabase Storage
+                            video_url = upload_to_supabase_storage(
+                                reel_bytes,
+                                f"carousel_reel_{selected_ids[0][:8]}.mp4",
+                                "video/mp4",
+                            )
+
+                            # Build caption
+                            caption_parts = []
+                            _cap_es = st.session_state.get("cb_caption_es", "")
+                            _cap_en = st.session_state.get("cb_caption_en", "")
+                            _cap_fr = st.session_state.get("cb_caption_fr", "")
+                            if _cap_es:
+                                caption_parts.append(_cap_es)
+                            if _cap_en:
+                                caption_parts.append(f"\U0001f1ec\U0001f1e7\n{_cap_en}")
+                            if _cap_fr:
+                                caption_parts.append(f"\U0001f1eb\U0001f1f7\n{_cap_fr}")
+                            full_caption = "\n\n".join(caption_parts)
+                            _ht = st.session_state.get("cb_hashtags_list", [])
+                            if _ht:
+                                full_caption += "\n\n" + " ".join(f"#{h}" for h in _ht)
+
+                            # IG Graph API: create Reel container
+                            token = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
+                            account_id = os.environ.get("INSTAGRAM_ACCOUNT_ID", "")
+                            container_id = create_ig_container(
+                                account_id=account_id,
+                                token=token,
+                                media_url=video_url,
+                                caption=full_caption,
+                                media_type="REELS",
+                            )
+
+                            # Poll until ready (videos take longer)
+                            status = poll_container_status(
+                                container_id, token, max_wait=180,
+                            )
+                            if status != "FINISHED":
+                                st.error(f"Container processing failed: {status}")
+                            else:
+                                result = publish_container(account_id, token, container_id)
+                                post_id = result.get("id", "")
+                                st.success(f"Reel published! Post ID: {post_id}")
+
+                        except Exception as e:
+                            st.error(f"Publish failed: {e}")
+            with pr2:
+                if st.button("Cancel", key="cb_confirm_reel_no"):
+                    st.session_state.pop("cb_confirm_publish_reel", None)
+                    st.rerun()
 
     st.divider()
 
@@ -412,12 +702,21 @@ else:
                     theme_description=theme_desc,
                     selected_media=sel_media,
                 )
-                # Delete widget keys first so session_state write takes effect
+                new_es = cap_result.get("caption_es", "")
+                new_en = cap_result.get("caption_en", "")
+                new_fr = cap_result.get("caption_fr", "")
+
+                # Store in backup keys (not tied to widgets — always reliable)
+                st.session_state["_cb_gen_caption_es"] = new_es
+                st.session_state["_cb_gen_caption_en"] = new_en
+                st.session_state["_cb_gen_caption_fr"] = new_fr
+
+                # Delete widget keys THEN set new values + rerun
                 for k in ["cb_caption_es", "cb_caption_en", "cb_caption_fr", "cb_hashtags"]:
                     st.session_state.pop(k, None)
-                st.session_state["cb_caption_es"] = cap_result.get("caption_es", "")
-                st.session_state["cb_caption_en"] = cap_result.get("caption_en", "")
-                st.session_state["cb_caption_fr"] = cap_result.get("caption_fr", "")
+                st.session_state["cb_caption_es"] = new_es
+                st.session_state["cb_caption_en"] = new_en
+                st.session_state["cb_caption_fr"] = new_fr
                 hashtags = cap_result.get("hashtags", [])
                 if hashtags:
                     st.session_state["cb_hashtags"] = ", ".join(hashtags)
@@ -433,6 +732,11 @@ else:
                           placeholder="English caption...")
     cap_fr = st.text_area("Caption (FR)", height=100, key="cb_caption_fr",
                           placeholder="L\u00e9gende en fran\u00e7ais...")
+
+    # Sync backup keys whenever user edits manually
+    st.session_state["_cb_gen_caption_es"] = cap_es
+    st.session_state["_cb_gen_caption_en"] = cap_en
+    st.session_state["_cb_gen_caption_fr"] = cap_fr
 
     hashtags_str = st.text_input(
         "Hashtags (comma-separated)",
@@ -491,8 +795,10 @@ else:
                             m = media_by_id.get(mid)
                             if m and m.get("drive_file_id"):
                                 img_bytes = _download_thumb(m["drive_file_id"])
+                                # Convert to JPEG before uploading (handles HEIC)
+                                jpeg_bytes = _to_jpeg_bytes(img_bytes)
                                 url = upload_to_supabase_storage(
-                                    img_bytes,
+                                    jpeg_bytes,
                                     f"carousel_{mid[:8]}.jpg",
                                     "image/jpeg",
                                 )
@@ -533,14 +839,21 @@ else:
 st.divider()
 st.markdown("### Saved Drafts")
 
-draft_status = st.selectbox("Filter", ["draft", "validated", "published", "all"], key="cb_draft_filter")
+draft_status = st.selectbox(
+    "Filter",
+    ["draft", "accepted", "rejected", "published", "all"],
+    key="cb_draft_filter",
+)
 drafts = fetch_carousel_drafts(status=draft_status)
 
 if not drafts:
     st.caption("No carousel drafts found.")
 else:
+    _status_colors = {
+        "draft": "blue", "accepted": "green", "rejected": "red",
+        "published": "violet", "validated": "orange",
+    }
     for d in drafts:
-        _status_colors = {"draft": "blue", "validated": "orange", "published": "green"}
         _color = _status_colors.get(d["status"], "gray")
         with st.expander(
             f":{_color}[{d['status'].upper()}] {d.get('title', 'Untitled')} "
@@ -554,23 +867,56 @@ else:
             if d.get("ig_permalink"):
                 st.markdown(f"[View on Instagram]({d['ig_permalink']})")
 
+            # Show previous feedback/rating if any
+            if d.get("feedback"):
+                st.markdown(f"Feedback: *{d['feedback']}*")
+            if d.get("rating"):
+                st.markdown(f"Rating: {'★' * d['rating']}")
+
+            # Accept / Reject controls
+            _d_id = d["id"]
+            _d_status = d["status"]
+            ar1, ar2 = st.columns(2)
+            with ar1:
+                _acc_label = "Accepted" if _d_status == "accepted" else "Accept"
+                if st.button(
+                    _acc_label, key=f"cb_acc_{_d_id}",
+                    type="primary" if _d_status != "accepted" else "secondary",
+                    use_container_width=True,
+                ):
+                    update_carousel_feedback(_d_id, "accepted")
+                    st.rerun()
+            with ar2:
+                _rej_label = "Rejected" if _d_status == "rejected" else "Reject"
+                if st.button(
+                    _rej_label, key=f"cb_rej_{_d_id}",
+                    type="secondary",
+                    use_container_width=True,
+                ):
+                    update_carousel_feedback(_d_id, "rejected")
+                    st.rerun()
+
+            # Load / Delete actions
             dc1, dc2 = st.columns(2)
             with dc1:
-                if d["status"] == "draft":
-                    if st.button("Load into editor", key=f"cb_load_{d['id']}"):
-                        # Clear widget keys first so session_state write takes effect
+                if _d_status in ("draft", "accepted"):
+                    if st.button("Load into editor", key=f"cb_load_{_d_id}"):
                         for k in ["cb_caption_es", "cb_caption_en", "cb_caption_fr", "cb_hashtags", "cb_title"]:
                             st.session_state.pop(k, None)
                         st.session_state["cb_selected_ids"] = d.get("media_ids", [])
                         st.session_state["cb_caption_es"] = d.get("caption_es", "")
                         st.session_state["cb_caption_en"] = d.get("caption_en", "")
                         st.session_state["cb_caption_fr"] = d.get("caption_fr", "")
+                        st.session_state["_cb_gen_caption_es"] = d.get("caption_es", "")
+                        st.session_state["_cb_gen_caption_en"] = d.get("caption_en", "")
+                        st.session_state["_cb_gen_caption_fr"] = d.get("caption_fr", "")
                         st.session_state["cb_title"] = d.get("title", "")
                         ht = d.get("hashtags", [])
                         st.session_state["cb_hashtags"] = ", ".join(ht) if ht else ""
+                        st.session_state["cb_hashtags_list"] = ht or []
                         st.rerun()
             with dc2:
-                if d["status"] == "draft":
-                    if st.button("Delete", key=f"cb_del_{d['id']}"):
-                        delete_carousel_draft(d["id"])
+                if _d_status in ("draft", "rejected"):
+                    if st.button("Delete", key=f"cb_del_{_d_id}"):
+                        delete_carousel_draft(_d_id)
                         st.rerun()

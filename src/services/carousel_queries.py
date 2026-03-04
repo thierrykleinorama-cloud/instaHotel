@@ -120,6 +120,28 @@ def update_carousel_draft(
         return False
 
 
+def update_carousel_feedback(
+    carousel_id: str,
+    status: str,
+    feedback: str = None,
+    rating: int = None,
+) -> bool:
+    """Accept or reject a carousel draft with optional feedback and rating."""
+    client = get_supabase()
+    try:
+        updates = {"status": status}
+        if feedback is not None:
+            updates["feedback"] = feedback
+        if rating is not None:
+            updates["rating"] = rating
+        client.table(TABLE_CAROUSEL_DRAFTS).update(updates).eq("id", carousel_id).execute()
+        _clear_drafts_cache()
+        return True
+    except Exception as e:
+        print(f"Carousel feedback update failed: {e}")
+        return False
+
+
 def delete_carousel_draft(carousel_id: str) -> bool:
     """Delete a carousel draft."""
     client = get_supabase()

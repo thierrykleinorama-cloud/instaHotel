@@ -22,6 +22,10 @@ from src.services.creative_queries import (
     update_music_feedback,
     update_job_feedback,
 )
+from src.services.carousel_queries import (
+    fetch_carousel_drafts,
+    update_carousel_feedback,
+)
 
 
 sidebar_css()
@@ -36,6 +40,7 @@ STATUS_OPTIONS = {
     "Scenarios": ["draft", "accepted", "rejected", "all"],
     "Videos": ["unreviewed", "accepted", "rejected", "all"],
     "Music": ["draft", "accepted", "rejected", "all"],
+    "Carousels": ["draft", "accepted", "rejected", "all"],
 }
 
 STATUS_LABELS = {
@@ -52,6 +57,8 @@ STATUS_COLORS = {
     "accepted": "green",
     "rejected": "red",
     "completed": "blue",
+    "published": "violet",
+    "validated": "green",
 }
 
 with st.sidebar:
@@ -59,7 +66,7 @@ with st.sidebar:
 
     filter_type = st.selectbox(
         "Content type",
-        ["All", "Scenarios", "Videos", "Music"],
+        ["All", "Scenarios", "Videos", "Music", "Carousels"],
         key="dr_type",
     )
 
@@ -81,6 +88,12 @@ with st.sidebar:
         STATUS_OPTIONS["Music"],
         format_func=lambda s: STATUS_LABELS[s],
         key="dr_status_mu",
+    )
+    status_carousel = st.selectbox(
+        "Carousel status",
+        STATUS_OPTIONS["Carousels"],
+        format_func=lambda s: STATUS_LABELS[s],
+        key="dr_status_car",
     )
 
 
@@ -139,6 +152,8 @@ def _do_feedback(item_id: str, item_type: str, status: str, feedback: str, ratin
         update_music_feedback(item_id, status, feedback=fb, rating=rating)
     elif item_type == "video":
         update_job_feedback(item_id, status=status, feedback=fb, rating=rating)
+    elif item_type == "carousel":
+        update_carousel_feedback(item_id, status, feedback=fb, rating=rating)
 
 
 # ---------------------------------------------------------------------------
@@ -148,10 +163,12 @@ def _do_feedback(item_id: str, item_type: str, status: str, feedback: str, ratin
 show_scenarios = filter_type in ("All", "Scenarios")
 show_videos = filter_type in ("All", "Videos")
 show_music = filter_type in ("All", "Music")
+show_carousels = filter_type in ("All", "Carousels")
 
 scenarios = fetch_draft_scenarios(status=status_scenario) if show_scenarios else []
 videos = fetch_draft_videos(status=status_video) if show_videos else []
 music_tracks = fetch_draft_music(status=status_music) if show_music else []
+carousels = fetch_carousel_drafts(status=status_carousel) if show_carousels else []
 
 # Resolve source media names for display
 all_media_ids = (
@@ -168,16 +185,18 @@ with st.sidebar:
     st.metric("Scenarios", len(scenarios))
     st.metric("Videos", len(videos))
     st.metric("Music tracks", len(music_tracks))
+    st.metric("Carousels", len(carousels))
 
 
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_scenarios, tab_videos, tab_music = st.tabs([
+tab_scenarios, tab_videos, tab_music, tab_carousels = st.tabs([
     f"Scenarios ({len(scenarios)})",
     f"Videos ({len(videos)})",
     f"Music ({len(music_tracks)})",
+    f"Carousels ({len(carousels)})",
 ])
 
 
@@ -311,3 +330,47 @@ with tab_music:
                 st.markdown(f"Previous rating: {'*' * mu['rating']}")
 
             render_review_controls(mu_id, "music", mu_status, "dr_mu")
+
+
+# ---------------------------------------------------------------------------
+# Tab 4: Carousels
+# ---------------------------------------------------------------------------
+with tab_carousels:
+    if not carousels:
+        st.info("No carousels match the current filter.")
+    for car in carousels:
+        car_id = car["id"]
+        title = car.get("title", "Untitled")
+        car_status = car.get("status", "draft")
+        color = STATUS_COLORS.get(car_status, "gray")
+        n_images = len(car.get("media_ids", []))
+        date_str = car.get("created_at", "?")[:16]
+        caption_preview = (car.get("caption_es", "")[:60] + "...") if car.get("caption_es") else "—"
+
+        with st.expander(f":{color}[{car_status.upper()}] {title}  —  {n_images} images  —  {date_str}"):
+            # Captions preview
+            for lang, label in [("caption_es", "ES"), ("caption_en", "EN"), ("caption_fr", "FR")]:
+                text = car.get(lang, "")
+                if text:
+                    st.text_area(f"Caption {label}", value=text, height=60,
+                                 key=f"dr_car_{lang}_{car_id}", disabled=True)
+
+            # Hashtags
+            tags = car.get("hashtags", [])
+            if tags:
+                st.markdown(f"**Hashtags:** {' '.join(f'`{t}`' for t in tags)}")
+
+            # Meta info
+            info_parts = [f"{n_images} images"]
+            if car.get("ig_permalink"):
+                info_parts.append(f"[Published]({car['ig_permalink']})")
+            if date_str != "?":
+                info_parts.append(date_str)
+            st.caption(" | ".join(info_parts))
+
+            if car.get("feedback"):
+                st.markdown(f"Previous feedback: *{car['feedback']}*")
+            if car.get("rating"):
+                st.markdown(f"Previous rating: {'★' * car['rating']}")
+
+            render_review_controls(car_id, "carousel", car_status, "dr_car")
