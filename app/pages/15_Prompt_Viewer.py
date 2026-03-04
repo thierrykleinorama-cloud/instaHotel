@@ -28,9 +28,18 @@ PROMPT_FILES = [
         "used_by": ["app/pages/6_Instagram_Preview.py", "src/services/caption_generator.py"],
     },
     {
+        "file": "src/prompts/sitges_context.py",
+        "title": "Sitges Context (Knowledge Base)",
+        "description": "Comprehensive Sitges knowledge base for AI content generation: overview, 19 beaches, "
+                       "culture & museums, year-round events calendar, gastronomy & wine, activities, LGBTQ+ identity, "
+                       "practical info, content angles, and seasonal context. Used by destination captions and carousel AI.",
+        "used_by": ["src/prompts/destination_content.py", "src/services/caption_generator.py"],
+    },
+    {
         "file": "src/prompts/destination_content.py",
         "title": "Destination Content",
         "description": "Prompts for destination-focused captions about Sitges and surroundings. "
+                       "Imports SITGES_FULL_CONTEXT from sitges_context.py. "
                        "Used when editorial focus is set to 'destination' in the calendar.",
         "used_by": ["src/services/caption_generator.py", "src/services/content_generator.py"],
     },
