@@ -13,3 +13,8 @@ CREATE INDEX IF NOT EXISTS idx_music_calendar ON generated_music(calendar_id) WH
 -- Creative pipeline status tracking on calendar slots
 ALTER TABLE editorial_calendar ADD COLUMN IF NOT EXISTS creative_status TEXT DEFAULT NULL;
 -- Values: NULL (no creative), scenarios_generated, video_generated, music_generated, complete
+
+-- Expand creative_jobs status constraint to allow accept/reject review flow
+ALTER TABLE creative_jobs DROP CONSTRAINT IF EXISTS creative_jobs_status_check;
+ALTER TABLE creative_jobs ADD CONSTRAINT creative_jobs_status_check
+  CHECK (status = ANY (ARRAY['pending','running','completed','failed','accepted','rejected']));
