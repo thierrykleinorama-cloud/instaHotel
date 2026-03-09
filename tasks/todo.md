@@ -138,7 +138,14 @@
 **RULE: This is the ONE place for all TODOs. Always read this before proposing next steps.**
 
 ### Content Production (enable batch content creation)
-- [ ] **Batch calendar creative workflow** — Generate scenarios for all calendar slots in one click → review/accept/reject via Drafts Review → generate videos → music → assemble. Long-running batch pattern.
+- [x] **Batch calendar creative workflow** — Generate scenarios for all calendar slots in one click → review/accept/reject via Drafts Review → generate videos → music → assemble. Long-running batch pattern. DONE 2026-03-06.
+### Drafts Review UX (short-term polish)
+- [ ] **Scenario thumbnails** — Show media thumbnail next to each scenario in Drafts Review so user can visually relate scenario to its source photo
+- [ ] **Carousel preview in Drafts Review** — Currently no carousel preview in the carousel tab — impossible to evaluate. Add `render_ig_preview_carousel()` inline.
+- [ ] **Accept feedback** — Allow feedback text on accept (not just reject). Useful for noting what made a scenario/video good, to improve future prompts.
+- [ ] **Clarify scenario purpose** — Add a label/badge showing what the scenario is for (e.g. "Video scenario" vs "Carousel concept"). Currently scenarios are exclusively for video generation (motion_prompt → photo-to-video).
+- [ ] **Rating tooltip** — Clarify what the 1-5 rating is for (user quality assessment, NOT the Claude ig_quality score). Add helper text in the UI.
+
 - [ ] **Batch photo enhancement (Phase 2.5B)** — Bulk-enhance ~94 low-quality media (ig_quality < 5). Re-run Claude Vision, keep if +2 improvement. Add DB columns: enhanced_url, enhanced_quality, enhancement_method. Upload to `Generated/Enhanced/` in Drive. Folder already created.
 - [ ] **Auto-retarget** — Outpaint photos to 4:5 (feed) and 9:16 (story/reel) in batch
 

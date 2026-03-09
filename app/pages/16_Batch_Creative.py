@@ -35,6 +35,22 @@ from src.services.creative_transform import VIDEO_MODELS
 sidebar_css()
 page_title("Batch Pipeline", "Generate creative content for all calendar slots")
 
+with st.expander("How it works", expanded=False):
+    st.markdown("""
+**4-step pipeline with review gates:**
+
+1. **Run Scenarios** — AI generates 3 creative video concepts per calendar slot (~$0.02/slot)
+2. **Review in Drafts Review** — Accept the best scenario for each slot, reject the rest
+3. **Run Videos** — Generates video from each accepted scenario (~$0.30/slot Kling, ~$0.60 Veo)
+4. **Review in Drafts Review** — Accept/reject videos
+5. **Run Music** — Generates background music for accepted videos (~$0.02/slot)
+6. **Review in Drafts Review** — Accept/reject music
+7. **Run Composite** — Merges accepted video + music into final Reel (free)
+
+Each step only processes slots that passed the previous review gate.
+Re-running a step skips already-processed slots (idempotent).
+""")
+
 # -------------------------------------------------------
 # Session state defaults
 # -------------------------------------------------------
@@ -54,8 +70,22 @@ with st.sidebar:
     st.subheader("Date Range")
     today = date.today()
     default_start = today - timedelta(days=today.weekday())
+
+    # Check if there's in-progress creative work in a recent range (look back 4 weeks)
+    # so the default date shows work the user already started
+    _lookback_start = default_start - timedelta(weeks=4)
+    _recent_cal = fetch_calendar_range(_lookback_start, default_start - timedelta(days=1))
+    _has_creative = [e for e in _recent_cal if e.get("creative_status")]
+    if _has_creative and not st.session_state.get("_bp_date_overridden"):
+        # Default to the earliest week with creative work
+        _earliest = min(e["post_date"] for e in _has_creative)
+        if isinstance(_earliest, str):
+            _earliest = date.fromisoformat(_earliest)
+        _creative_monday = _earliest - timedelta(days=_earliest.weekday())
+        default_start = _creative_monday
+
     start_date = st.date_input("Start Date", value=default_start, key="bp_start")
-    weeks = st.slider("Weeks", 1, 8, 2, key="bp_weeks")
+    weeks = st.slider("Weeks", 1, 8, 4, key="bp_weeks")
     end_date = start_date + timedelta(weeks=weeks) - timedelta(days=1)
     st.caption(f"Range: {start_date} → {end_date}")
 
@@ -199,22 +229,30 @@ with c4:
 # Next action hint
 _hints = []
 if scenario_eligible > 0:
-    _hints.append(f"Run scenarios for **{scenario_eligible}** slots")
-elif scenarios_total > 0 and scenarios_accepted == 0:
-    _hints.append("Review scenarios in **Drafts Review** → accept/reject")
+    _hints.append(f"**1.** Run scenarios for **{scenario_eligible}** slots")
+if scenarios_total > 0 and scenarios_accepted < scenarios_total:
+    _unreviewed = scenarios_total - scenarios_accepted - sum(
+        1 for cid in cal_ids
+        if all(s.get("status") == "rejected" for s in scenario_map.get(cid, []))
+        and cid in scenario_map
+    )
+    if _unreviewed > 0:
+        _hints.append(f"**2.** Go to **Drafts Review** → accept best scenario per slot ({_unreviewed} to review)")
 if video_eligible > 0:
-    _hints.append(f"Run videos for **{video_eligible}** accepted scenarios")
+    _hints.append(f"**3.** Run videos for **{video_eligible}** accepted scenarios (~${vid_est['total']:.2f})")
 elif videos_total > 0 and videos_accepted == 0:
-    _hints.append("Review videos in **Drafts Review** → accept/reject")
+    _hints.append("**3.** Go to **Drafts Review** → accept/reject videos")
 if music_eligible > 0:
-    _hints.append(f"Run music for **{music_eligible}** accepted videos")
+    _hints.append(f"**4.** Run music for **{music_eligible}** accepted videos")
 elif music_total > 0 and music_accepted == 0:
-    _hints.append("Review music in **Drafts Review** → accept/reject")
+    _hints.append("**4.** Go to **Drafts Review** → accept/reject music")
 if composite_eligible > 0:
-    _hints.append(f"Run composite for **{composite_eligible}** slots")
+    _hints.append(f"**5.** Run composite for **{composite_eligible}** slots (free)")
 
 if _hints:
-    st.info("**Next steps:** " + " → ".join(_hints))
+    st.info("**Next steps:**\n\n" + "\n\n".join(_hints))
+elif composites_total > 0:
+    st.success("Pipeline complete! All slots have composited Reels.")
 
 # -------------------------------------------------------
 # Action buttons
