@@ -16,6 +16,7 @@ import streamlit.components.v1 as components
 from app.components.ui import sidebar_css, page_title
 from app.components.media_grid import _fetch_thumbnail_b64
 from app.components.ig_preview import render_ig_preview_carousel
+from src.services.google_drive import download_file_bytes
 from src.services.creative_queries import (
     fetch_draft_scenarios,
     fetch_draft_music,
@@ -338,7 +339,16 @@ with tab_music:
         date_str = mu.get("created_at", "?")[:16]
 
         with st.expander(f":{color}[{mu_status.upper()}] {date_str}  —  *{source_name}*  —  {prompt_preview}"):
-            if mu.get("audio_url"):
+            # Play audio: prefer Drive download (Drive view links don't stream)
+            _mu_played = False
+            if mu.get("drive_file_id"):
+                try:
+                    _mu_bytes = download_file_bytes(mu["drive_file_id"])
+                    st.audio(_mu_bytes, format="audio/wav")
+                    _mu_played = True
+                except Exception:
+                    pass
+            if not _mu_played and mu.get("audio_url") and "drive.google.com" not in mu.get("audio_url", ""):
                 st.audio(mu["audio_url"])
 
             if mu.get("prompt"):
