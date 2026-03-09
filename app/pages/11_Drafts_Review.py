@@ -11,13 +11,16 @@ if _root not in sys.path:
     sys.path.insert(0, _root)
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from app.components.ui import sidebar_css, page_title
+from app.components.media_grid import _fetch_thumbnail_b64
+from app.components.ig_preview import render_ig_preview_carousel
 from src.services.creative_queries import (
     fetch_draft_scenarios,
     fetch_draft_music,
     fetch_draft_videos,
-    fetch_media_names,
+    fetch_media_info,
     update_scenario_feedback,
     update_music_feedback,
     update_job_feedback,
@@ -113,11 +116,14 @@ def render_review_controls(item_id: str, item_type: str, current_status: str, ke
         color = STATUS_COLORS.get(current_status, "gray")
         st.markdown(f"Status: :{color}[{current_status.upper()}]")
 
-    rating = st.slider("Rating", 1, 5, 3, key=f"{key_prefix}_rating_{item_id}")
+    rating = st.slider(
+        "Rating", 1, 5, 3, key=f"{key_prefix}_rating_{item_id}",
+        help="Your quality assessment: 1 = poor, 5 = excellent. Used to improve future AI prompts.",
+    )
     feedback_text = st.text_input(
         "Feedback",
         key=f"{key_prefix}_fb_{item_id}",
-        placeholder="Optional — why reject?",
+        placeholder="Optional — what's good or bad about this?",
     )
 
     col_accept, col_reject = st.columns(2)
@@ -170,13 +176,20 @@ videos = fetch_draft_videos(status=status_video) if show_videos else []
 music_tracks = fetch_draft_music(status=status_music) if show_music else []
 carousels = fetch_carousel_drafts(status=status_carousel) if show_carousels else []
 
-# Resolve source media names for display
-all_media_ids = (
-    [s["source_media_id"] for s in scenarios if s.get("source_media_id")]
-    + [v["source_media_id"] for v in videos if v.get("source_media_id")]
-    + [m["source_media_id"] for m in music_tracks if m.get("source_media_id")]
-)
-media_names = fetch_media_names(all_media_ids) if all_media_ids else {}
+# Resolve source media info for display (name + thumbnail)
+all_media_ids = list({
+    item.get("source_media_id")
+    for items in (scenarios, videos, music_tracks)
+    for item in items
+    if item.get("source_media_id")
+})
+# Also collect media_ids from carousels
+for car in carousels:
+    all_media_ids.extend(car.get("media_ids", []))
+all_media_ids = list(set(mid for mid in all_media_ids if mid))
+_media_info = fetch_media_info(all_media_ids) if all_media_ids else {}
+# Backward compat helper
+media_names = {mid: info.get("file_name", "—") for mid, info in _media_info.items()}
 
 # Sidebar summary stats
 with st.sidebar:
@@ -210,18 +223,36 @@ with tab_scenarios:
         sc_id = sc["id"]
         mood = sc.get("mood", "?")
         title = sc.get("title", "Untitled")
-        source_name = media_names.get(sc.get("source_media_id", ""), "—")
+        source_mid = sc.get("source_media_id", "")
+        source_name = media_names.get(source_mid, "—")
         sc_status = sc.get("status", "draft")
         color = STATUS_COLORS.get(sc_status, "gray")
 
-        with st.expander(f":{color}[{sc_status.upper()}] [{mood.upper()}] {title}  —  *{source_name}*"):
-            if sc.get("description"):
-                st.markdown(f"**{sc['description']}**")
+        with st.expander(f":{color}[{sc_status.upper()}] :violet[Video scenario] [{mood.upper()}] {title}  —  *{source_name}*"):
+            # Thumbnail + description side by side
+            _sc_thumb_col, _sc_info_col = st.columns([1, 3])
+            with _sc_thumb_col:
+                _sc_dfid = _media_info.get(source_mid, {}).get("drive_file_id")
+                if _sc_dfid:
+                    try:
+                        _sc_b64 = _fetch_thumbnail_b64(_sc_dfid)
+                        if _sc_b64:
+                            st.image(f"data:image/jpeg;base64,{_sc_b64}", width=140)
+                        else:
+                            st.caption("No thumbnail")
+                    except Exception:
+                        st.caption("No thumbnail")
+                else:
+                    st.caption("—")
+            with _sc_info_col:
+                if sc.get("description"):
+                    st.markdown(f"**{sc['description']}**")
+                if sc.get("caption_hook"):
+                    st.markdown(f"Caption hook: *{sc['caption_hook']}*")
+
             if sc.get("motion_prompt"):
                 st.text_area("Motion prompt", value=sc["motion_prompt"], height=80,
                              key=f"dr_sc_mp_{sc_id}", disabled=True)
-            if sc.get("caption_hook"):
-                st.markdown(f"Caption hook: *{sc['caption_hook']}*")
 
             info_parts = []
             if sc.get("cost_usd"):
@@ -236,7 +267,7 @@ with tab_scenarios:
             if sc.get("feedback"):
                 st.markdown(f"Previous feedback: *{sc['feedback']}*")
             if sc.get("rating"):
-                st.markdown(f"Previous rating: {'*' * sc['rating']}")
+                st.markdown(f"Previous rating: {'★' * sc['rating']}")
 
             render_review_controls(sc_id, "scenario", sc_status, "dr_sc")
 
@@ -265,7 +296,9 @@ with tab_videos:
 
         with st.expander(f":{color}[{display_status.upper()}] {date_str}  —  *{source_name}*  —  {prompt_preview}"):
             if vj.get("result_url"):
-                st.video(vj["result_url"])
+                _vid_col, _vid_spacer = st.columns([2, 1])
+                with _vid_col:
+                    st.video(vj["result_url"])
             if params.get("prompt"):
                 st.text_area("Prompt", value=params["prompt"], height=80,
                              key=f"dr_vid_prompt_{vj_id}", disabled=True)
@@ -348,17 +381,48 @@ with tab_carousels:
         caption_preview = (car.get("caption_es", "")[:60] + "...") if car.get("caption_es") else "—"
 
         with st.expander(f":{color}[{car_status.upper()}] {title}  —  {n_images} images  —  {date_str}"):
-            # Captions preview
-            for lang, label in [("caption_es", "ES"), ("caption_en", "EN"), ("caption_fr", "FR")]:
-                text = car.get(lang, "")
-                if text:
-                    st.text_area(f"Caption {label}", value=text, height=60,
-                                 key=f"dr_car_{lang}_{car_id}", disabled=True)
+            # Carousel image preview
+            _car_media_ids = car.get("media_ids", [])
+            _car_images_b64 = []
+            if _car_media_ids:
+                for _cm_id in _car_media_ids:
+                    _cm_dfid = _media_info.get(_cm_id, {}).get("drive_file_id")
+                    if _cm_dfid:
+                        try:
+                            _cm_b64 = _fetch_thumbnail_b64(_cm_dfid)
+                            if _cm_b64:
+                                _car_images_b64.append(_cm_b64)
+                        except Exception:
+                            pass
 
-            # Hashtags
-            tags = car.get("hashtags", [])
-            if tags:
-                st.markdown(f"**Hashtags:** {' '.join(f'`{t}`' for t in tags)}")
+            if _car_images_b64:
+                _car_caption = car.get("caption_es", "")
+                _car_tags = " ".join(car.get("hashtags", []))
+                _car_html, _car_h = render_ig_preview_carousel(
+                    _car_images_b64, _car_caption, _car_tags,
+                )
+                _preview_col, _info_col = st.columns([1, 1])
+                with _preview_col:
+                    components.html(_car_html, height=min(_car_h, 700), scrolling=True)
+                with _info_col:
+                    for lang, label in [("caption_es", "ES"), ("caption_en", "EN"), ("caption_fr", "FR")]:
+                        text = car.get(lang, "")
+                        if text:
+                            st.text_area(f"Caption {label}", value=text, height=60,
+                                         key=f"dr_car_{lang}_{car_id}", disabled=True)
+                    tags = car.get("hashtags", [])
+                    if tags:
+                        st.markdown(f"**Hashtags:** {' '.join(f'`{t}`' for t in tags)}")
+            else:
+                # No images available — show captions only
+                for lang, label in [("caption_es", "ES"), ("caption_en", "EN"), ("caption_fr", "FR")]:
+                    text = car.get(lang, "")
+                    if text:
+                        st.text_area(f"Caption {label}", value=text, height=60,
+                                     key=f"dr_car_{lang}_{car_id}", disabled=True)
+                tags = car.get("hashtags", [])
+                if tags:
+                    st.markdown(f"**Hashtags:** {' '.join(f'`{t}`' for t in tags)}")
 
             # Meta info
             info_parts = [f"{n_images} images"]
