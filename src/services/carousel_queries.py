@@ -21,6 +21,7 @@ def save_carousel_draft(
     caption_en: str = "",
     caption_fr: str = "",
     hashtags: list[str] | None = None,
+    calendar_id: Optional[str] = None,
 ) -> Optional[str]:
     """Create a new carousel draft. Returns the new ID or None."""
     client = get_supabase()
@@ -33,6 +34,8 @@ def save_carousel_draft(
         "hashtags": hashtags or [],
         "status": "draft",
     }
+    if calendar_id:
+        row["calendar_id"] = calendar_id
     try:
         result = client.table(TABLE_CAROUSEL_DRAFTS).insert(row).execute()
         _clear_drafts_cache()
@@ -40,6 +43,40 @@ def save_carousel_draft(
     except Exception as e:
         print(f"Carousel draft save failed: {e}")
         return None
+
+
+def fetch_carousel_for_calendar(calendar_id: str) -> Optional[dict]:
+    """Return the most recent carousel draft for a calendar slot."""
+    client = get_supabase()
+    result = (
+        client.table(TABLE_CAROUSEL_DRAFTS)
+        .select("*")
+        .eq("calendar_id", calendar_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def fetch_carousels_for_calendar_ids(calendar_ids: list[str]) -> dict[str, list[dict]]:
+    """Return {calendar_id: [carousel_dicts]} for batch status display."""
+    if not calendar_ids:
+        return {}
+    client = get_supabase()
+    result = (
+        client.table(TABLE_CAROUSEL_DRAFTS)
+        .select("*")
+        .in_("calendar_id", calendar_ids)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    out: dict[str, list[dict]] = {}
+    for r in result.data:
+        cid = r.get("calendar_id")
+        if cid:
+            out.setdefault(cid, []).append(r)
+    return out
 
 
 @st.cache_data(ttl=120)

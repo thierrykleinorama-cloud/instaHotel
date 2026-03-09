@@ -47,6 +47,17 @@ from src.services.content_generator import (
 )
 from src.services.caption_generator import AVAILABLE_MODELS, DEFAULT_MODEL
 from src.prompts.tone_variants import TONE_LABELS, TONE_LABELS_REVERSE
+from src.services.creative_queries import (
+    fetch_accepted_video_for_calendar,
+    fetch_composite_for_calendar_ids,
+    fetch_videos_for_calendar_ids,
+    fetch_slideshow_for_calendar as _fetch_slideshow_for_cal,
+    fetch_slideshows_for_calendar_ids,
+)
+from src.services.carousel_queries import (
+    fetch_carousel_for_calendar,
+    fetch_carousels_for_calendar_ids,
+)
 
 # Sonnet model picker — short labels, default first
 _SONNET_OPTIONS = [
@@ -92,6 +103,31 @@ st.markdown("""
 page_title("Calendar", "Editorial posting calendar")
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+ROUTE_LABELS = {
+    "feed": "Feed",
+    "carousel": "Carousel",
+    "reel-kling": "Kling",
+    "reel-veo": "Veo",
+    "reel-slideshow": "Slideshow",
+}
+ROUTE_COLORS = {
+    "feed": "gray",
+    "carousel": "orange",
+    "reel-kling": "blue",
+    "reel-veo": "green",
+    "reel-slideshow": "violet",
+}
+# Short letters for week grid
+ROUTE_LETTERS = {
+    "feed": "",
+    "carousel": "C",
+    "reel-kling": "K",
+    "reel-veo": "V",
+    "reel-slideshow": "S",
+}
+# Legacy route normalization
+_LEGACY_ROUTE_MAP = {"story": "feed", "reel": "reel-kling"}
+
 STATUS_COLORS = {
     "planned": "gray",
     "generated": "blue",
@@ -449,14 +485,21 @@ if view_mode == "Week Grid":
                         _focus = entry.get("focus", "hotel")
                         _dest_tag = " :orange[D]" if _focus == "destination" else ""
 
+                        # Route info
+                        _raw_route = entry.get("target_format") or "feed"
+                        _route = _LEGACY_ROUTE_MAP.get(_raw_route, _raw_route)
+                        _rletter = ROUTE_LETTERS.get(_route, "")
+                        _rcolor = ROUTE_COLORS.get(_route, "gray")
+                        _route_tag = f" :{_rcolor}[{_rletter}]" if _rletter else ""
+
                         # Show thumbnail if media assigned
                         if media_id:
                             score_str = f"{score:.0f}" if score else "—"
                             caption_icon = " &check;" if has_content else ""
-                            st.markdown(f":{STATUS_COLORS.get(status, 'gray')}[●] {cat}{_dest_tag}{caption_icon}")
+                            st.markdown(f":{STATUS_COLORS.get(status, 'gray')}[●] {cat}{_dest_tag}{_route_tag}{caption_icon}")
                             st.caption(f"S{slot} | {score_str}pts")
                         else:
-                            st.markdown(f":gray[○] {cat}{_dest_tag}")
+                            st.markdown(f":gray[○] {cat}{_dest_tag}{_route_tag}")
                             st.caption(f"S{slot} | no media")
 
         st.divider()
@@ -484,6 +527,12 @@ else:
         caption_tag = " | captions" if has_content else ""
         _focus = entry.get("focus", "hotel")
         _focus_tag = " | Destination" if _focus == "destination" else ""
+        # Route badge
+        _raw_route = entry.get("target_format") or "feed"
+        _route = _LEGACY_ROUTE_MAP.get(_raw_route, _raw_route)
+        _route_label = ROUTE_LABELS.get(_route, _route)
+        _route_color = ROUTE_COLORS.get(_route, "gray")
+        _route_tag = f" | :{_route_color}[{_route_label}]"
         # Creative pipeline status badge
         _cs = entry.get("creative_status")
         _CREATIVE_BADGES = {
@@ -491,11 +540,13 @@ else:
             "video_generated": ":blue[Video]",
             "music_generated": ":orange[Music]",
             "complete": ":green[Complete]",
+            "carousel_generated": ":orange[Carousel]",
+            "slideshow_generated": ":violet[Slideshow]",
         }
         _creative_tag = f" | {_CREATIVE_BADGES[_cs]}" if _cs in _CREATIVE_BADGES else ""
 
         _is_expanded = st.session_state.get("cal_expanded_id") == entry["id"]
-        with st.expander(f":{color}[●] {post_date} — S{slot} | {cat}{_focus_tag} | {score_str}pts | {status}{caption_tag}{_creative_tag}", expanded=_is_expanded):
+        with st.expander(f":{color}[●] {post_date} — S{slot} | {cat}{_focus_tag}{_route_tag} | {score_str}pts | {status}{caption_tag}{_creative_tag}", expanded=_is_expanded):
             c1, c2 = st.columns([2, 1])
 
             with c1:
@@ -554,6 +605,86 @@ else:
                         st.caption(_desc_en)
                 else:
                     st.caption("No media assigned")
+
+            # -----------------------------------------------
+            # Generated content preview (video / carousel / slideshow)
+            # -----------------------------------------------
+            if _route in ("reel-kling", "reel-veo", "reel-slideshow", "carousel"):
+                _gen_c1, _gen_c2 = st.columns([2, 1])
+                with _gen_c1:
+                    if _route in ("reel-kling", "reel-veo"):
+                        # Show accepted video or composite
+                        _comp_map_local = fetch_composite_for_calendar_ids([entry["id"]])
+                        _comp_list = _comp_map_local.get(entry["id"], [])
+                        _vid_map_local = fetch_videos_for_calendar_ids([entry["id"]])
+                        _vid_list = _vid_map_local.get(entry["id"], [])
+                        _best_vid = None
+                        # Prefer composite, then accepted video
+                        if _comp_list:
+                            _best_vid = _comp_list[0]
+                        elif _vid_list:
+                            _accepted = [v for v in _vid_list if v.get("status") == "accepted"]
+                            _best_vid = _accepted[0] if _accepted else (_vid_list[0] if _vid_list else None)
+
+                        if _best_vid:
+                            _vid_url = _best_vid.get("result_url", "")
+                            _vid_drive = _best_vid.get("drive_file_id")
+                            if _vid_drive:
+                                try:
+                                    _vid_bytes = _download_video_cached(_vid_drive)
+                                    st.video(_vid_bytes)
+                                except Exception:
+                                    if _vid_url:
+                                        st.video(_vid_url)
+                            elif _vid_url:
+                                st.video(_vid_url)
+                            _vid_status = _best_vid.get("status", "?")
+                            _vid_type = _best_vid.get("job_type", "video")
+                            st.caption(f"{_vid_type} — {_vid_status}")
+                        else:
+                            st.caption(f"No video generated yet (:{_route_color}[{_route_label}])")
+
+                    elif _route == "reel-slideshow":
+                        _ss = _fetch_slideshow_for_cal(entry["id"])
+                        if _ss:
+                            _ss_url = _ss.get("result_url", "")
+                            _ss_drive = _ss.get("drive_file_id")
+                            if _ss_drive:
+                                try:
+                                    _ss_bytes = _download_video_cached(_ss_drive)
+                                    st.video(_ss_bytes)
+                                except Exception:
+                                    if _ss_url:
+                                        st.video(_ss_url)
+                            elif _ss_url:
+                                st.video(_ss_url)
+                            st.caption("Slideshow — completed")
+                        else:
+                            st.caption("No slideshow generated yet")
+
+                    elif _route == "carousel":
+                        _car = fetch_carousel_for_calendar(entry["id"])
+                        if _car:
+                            _car_media_ids = _car.get("media_ids", [])
+                            if _car_media_ids:
+                                _thumb_cols = st.columns(min(len(_car_media_ids), 6))
+                                for _ti, _tmid in enumerate(_car_media_ids[:6]):
+                                    with _thumb_cols[_ti]:
+                                        from src.services.media_queries import fetch_media_by_id as _fm
+                                        _tm = _fm(_tmid)
+                                        if _tm and _tm.get("drive_file_id"):
+                                            try:
+                                                _tb64 = _fetch_thumbnail_b64(_tm["drive_file_id"])
+                                                if _tb64:
+                                                    st.image(f"data:image/jpeg;base64,{_tb64}", use_container_width=True)
+                                            except Exception:
+                                                st.caption("—")
+                            st.caption(f"Carousel: {_car.get('title', '')} — {_car.get('status', 'draft')}")
+                        else:
+                            st.caption("No carousel generated yet")
+
+                with _gen_c2:
+                    st.empty()  # placeholder for balance
 
             # -----------------------------------------------
             # Caption section

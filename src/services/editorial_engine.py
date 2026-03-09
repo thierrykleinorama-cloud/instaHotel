@@ -31,8 +31,12 @@ def get_current_season(d: date) -> str:
 
 FORMAT_ASPECT = {
     "feed": {"4:5", "1:1"},
-    "story": {"9:16"},
-    "reel": {"9:16"},
+    "story": {"9:16"},           # legacy
+    "reel": {"9:16"},            # legacy
+    "carousel": {"4:5", "1:1"},
+    "reel-kling": {"9:16"},
+    "reel-veo": {"9:16"},
+    "reel-slideshow": {"9:16"},
 }
 
 

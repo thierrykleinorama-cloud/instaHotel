@@ -139,6 +139,7 @@
 
 ### Content Production (enable batch content creation)
 - [x] **Batch calendar creative workflow** — Generate scenarios for all calendar slots in one click → review/accept/reject via Drafts Review → generate videos → music → assemble. Long-running batch pattern. DONE 2026-03-06.
+- [x] **Content type routing** — Route system replaces format: feed/carousel/reel-kling/reel-veo/reel-slideshow. Each route defines full production path. Batch Pipeline routes slots by route, no manual model selector. Rules page updated with route selectbox. Calendar shows route badges + generated content preview (video players, carousel thumbnails). DB migration: carousel_drafts gets calendar_id FK. DONE 2026-03-09.
 ### Drafts Review UX (short-term polish) — DONE 2026-03-09
 - [x] **Scenario thumbnails** — Source photo thumbnail shown next to scenario description in Drafts Review
 - [x] **Carousel preview in Drafts Review** — Full IG-style carousel preview with `render_ig_preview_carousel()` inline, side-by-side with captions + hashtags

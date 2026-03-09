@@ -396,6 +396,46 @@ def fetch_composite_for_calendar_ids(calendar_ids: list[str]) -> dict[str, list[
     return out
 
 
+# -----------------------------------------------------------
+# Calendar-aware slideshow fetchers (for Batch Pipeline / Calendar)
+# -----------------------------------------------------------
+
+def fetch_slideshow_for_calendar(calendar_id: str) -> Optional[dict]:
+    """Return the most recent slideshow job for a calendar slot."""
+    client = get_supabase()
+    result = (
+        client.table(TABLE_CREATIVE_JOBS)
+        .select("*")
+        .eq("calendar_id", calendar_id)
+        .eq("job_type", "slideshow")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def fetch_slideshows_for_calendar_ids(calendar_ids: list[str]) -> dict[str, list[dict]]:
+    """Return {calendar_id: [slideshow_job_dicts]} for batch status display."""
+    if not calendar_ids:
+        return {}
+    client = get_supabase()
+    result = (
+        client.table(TABLE_CREATIVE_JOBS)
+        .select("*")
+        .in_("calendar_id", calendar_ids)
+        .eq("job_type", "slideshow")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    out: dict[str, list[dict]] = {}
+    for r in result.data:
+        cid = r.get("calendar_id")
+        if cid:
+            out.setdefault(cid, []).append(r)
+    return out
+
+
 def fetch_rejected_scenarios(limit: int = 50) -> list[dict]:
     """Fetch recently rejected scenarios with feedback, for prompt improvement."""
     client = get_supabase()

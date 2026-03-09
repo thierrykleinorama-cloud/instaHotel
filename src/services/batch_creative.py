@@ -1,12 +1,18 @@
 """
 Batch Creative Pipeline — orchestrate scenario/video/music/composite generation
-for all calendar slots in a date range.
+for all calendar slots in a date range, with content-type routing.
+
+Routes:
+  feed           → Caption only (no batch action)
+  carousel       → AI select images → caption → save carousel draft
+  reel-kling     → Scenario → Kling video → Music → Composite
+  reel-veo       → Scenario → Veo video → Done (native audio)
+  reel-slideshow → Select images → Ken Burns slideshow → Music → Composite
 
 Each pass is independent and idempotent. Slots already processed are skipped.
 Review gates (accept/reject) happen between passes via Drafts Review page.
 """
-import base64
-import io
+import json
 from datetime import datetime
 from typing import Callable, Optional
 
@@ -21,6 +27,7 @@ from src.services.creative_queries import (
     fetch_music_for_calendar,
     fetch_videos_for_calendar_ids,
     fetch_composite_for_calendar_ids,
+    fetch_slideshows_for_calendar_ids,
 )
 from src.services.editorial_queries import update_calendar_creative_status
 from src.services.creative_transform import (
@@ -30,9 +37,25 @@ from src.services.creative_transform import (
     estimate_video_cost as _estimate_single_video_cost,
 )
 from src.services.music_generator import generate_music
-from src.services.video_composer import composite_video_audio
+from src.services.video_composer import composite_video_audio, images_to_slideshow
 from src.prompts.music_generation import build_music_prompt
 from src.utils import encode_image_bytes
+
+
+# ---------------------------------------------------------------------------
+# Route constants
+# ---------------------------------------------------------------------------
+
+ROUTE_VIDEO_MODEL = {
+    "reel-kling": "kling-v2.1",
+    "reel-veo": "veo-3.1-fast",
+}
+
+# Routes that need music + composite
+ROUTES_NEED_MUSIC = {"reel-kling", "reel-slideshow"}
+
+# Routes that go through the scenario → video pipeline
+ROUTES_REEL = {"reel-kling", "reel-veo"}
 
 
 # ---------------------------------------------------------------------------
@@ -62,8 +85,35 @@ def _get_media_and_image(slot: dict, include_image: bool = True) -> tuple[Option
     return media, image_b64
 
 
+def classify_slots_by_route(slots: list[dict]) -> dict[str, list[dict]]:
+    """Group calendar slots by their route (target_format).
+
+    Handles legacy values: 'story' → 'feed', 'reel' → 'reel-kling', NULL → 'feed'.
+    """
+    groups: dict[str, list[dict]] = {
+        "feed": [], "carousel": [], "reel-kling": [], "reel-veo": [], "reel-slideshow": [],
+    }
+    for s in slots:
+        route = s.get("target_format") or "feed"
+        # Legacy compat
+        if route == "story":
+            route = "feed"
+        if route == "reel":
+            route = "reel-kling"
+        groups.setdefault(route, []).append(s)
+    return groups
+
+
+def get_video_model_for_slot(slot: dict) -> str:
+    """Return the video model string for a slot's route."""
+    route = slot.get("target_format") or "reel-kling"
+    if route == "reel":
+        route = "reel-kling"
+    return ROUTE_VIDEO_MODEL.get(route, "kling-v2.1")
+
+
 # ---------------------------------------------------------------------------
-# Pass 1: Scenarios (Claude, ~5-10s per slot)
+# Pass 1: Scenarios (Claude, ~5-10s per slot) — reel-kling + reel-veo only
 # ---------------------------------------------------------------------------
 
 def batch_generate_scenarios(
@@ -148,7 +198,7 @@ def batch_generate_scenarios(
 
 
 # ---------------------------------------------------------------------------
-# Pass 2: Videos (Kling/Veo, 1-5 min per slot)
+# Pass 2: Videos (Kling/Veo, 1-5 min per slot) — route determines model
 # ---------------------------------------------------------------------------
 
 def batch_generate_videos(
@@ -161,7 +211,8 @@ def batch_generate_videos(
     """Generate videos for calendar slots with accepted scenarios.
 
     Per slot: finds accepted scenario → uses motion_prompt → generates video.
-    Skips slots without accepted scenarios or already with videos.
+    The video_model parameter is used as a fallback; route-aware callers
+    can pass slots that already have their model determined by route.
 
     Returns: {total, success, skipped, failed, errors: [], total_cost}
     """
@@ -178,8 +229,18 @@ def batch_generate_videos(
 
     for i, slot in enumerate(slots):
         cal_id = slot["id"]
+        # Determine model from route (fall back to parameter)
+        slot_model = get_video_model_for_slot(slot) if slot.get("target_format") in ROUTE_VIDEO_MODEL else video_model
+        # Adapt duration for provider
+        model_info = VIDEO_MODELS.get(slot_model, {})
+        slot_duration = duration
+        if model_info.get("provider") == "google" and duration not in (4, 6, 8):
+            slot_duration = 4  # default short for Veo
+        elif model_info.get("provider") != "google" and duration not in (5, 10):
+            slot_duration = 5
+
         if progress_callback:
-            progress_callback(i, total, f"Slot {i+1}/{total}: generating video...")
+            progress_callback(i, total, f"Slot {i+1}/{total}: generating video ({slot_model})...")
 
         # Skip if already has a video
         if cal_id in existing_videos and len(existing_videos[cal_id]) > 0:
@@ -206,9 +267,9 @@ def batch_generate_videos(
             result = photo_to_video(
                 image_bytes=image_bytes,
                 prompt=motion_prompt,
-                duration=duration,
+                duration=slot_duration,
                 aspect_ratio=aspect_ratio,
-                model=video_model,
+                model=slot_model,
             )
 
             cost = result["_cost"]["cost_usd"]
@@ -231,14 +292,14 @@ def batch_generate_videos(
             except Exception:
                 pass
 
-            provider = VIDEO_MODELS[video_model].get("provider", "replicate")
+            provider = VIDEO_MODELS[slot_model].get("provider", "replicate")
             save_video_job(
                 source_media_id=media["id"],
                 video_url=video_url,
                 prompt=motion_prompt,
                 cost_usd=cost,
                 provider=provider,
-                params={"duration": duration, "aspect_ratio": aspect_ratio, "model": video_model, "batch": True},
+                params={"duration": slot_duration, "aspect_ratio": aspect_ratio, "model": slot_model, "batch": True},
                 drive_file_id=drive_fid,
                 calendar_id=cal_id,
             )
@@ -264,7 +325,7 @@ def batch_generate_videos(
 
 
 # ---------------------------------------------------------------------------
-# Pass 3: Music (MusicGen, 1-2 min per slot)
+# Pass 3: Music (MusicGen, 1-2 min per slot) — reel-kling + reel-slideshow
 # ---------------------------------------------------------------------------
 
 def batch_generate_music(
@@ -272,7 +333,7 @@ def batch_generate_music(
     music_duration: int = 10,
     progress_callback: ProgressCallback = None,
 ) -> dict:
-    """Generate music for calendar slots with accepted videos.
+    """Generate music for calendar slots with accepted videos or slideshows.
 
     Per slot: finds accepted video → builds music prompt from media metadata →
     generates music → uploads to Drive → saves.
@@ -304,11 +365,15 @@ def batch_generate_music(
             continue
 
         try:
-            # Check for accepted video
+            # Check for accepted video (covers both reel-kling and slideshow)
             video = fetch_accepted_video_for_calendar(cal_id)
             if not video:
-                skipped += 1  # no accepted video — skip
-                continue
+                # Also check slideshow jobs
+                from src.services.creative_queries import fetch_slideshow_for_calendar
+                slideshow = fetch_slideshow_for_calendar(cal_id)
+                if not slideshow:
+                    skipped += 1
+                    continue
 
             media, _ = _get_media_and_image(slot, include_image=False)
             if not media:
@@ -374,7 +439,7 @@ def batch_generate_music(
 
 
 # ---------------------------------------------------------------------------
-# Pass 4: Composite (FFmpeg, ~30s per slot, free)
+# Pass 4: Composite (FFmpeg, ~30s per slot, free) — reel-kling + reel-slideshow
 # ---------------------------------------------------------------------------
 
 def batch_composite(
@@ -415,20 +480,28 @@ def batch_composite(
             video = fetch_accepted_video_for_calendar(cal_id)
             music = fetch_music_for_calendar(cal_id)
 
+            # For slideshows, also check slideshow jobs
+            if not video:
+                from src.services.creative_queries import fetch_slideshow_for_calendar
+                video = fetch_slideshow_for_calendar(cal_id)
+
             if not video or not music:
                 skipped += 1
                 continue
 
             # Download video bytes
             video_url = video.get("result_url", "")
-            if not video_url:
+            video_drive_id = video.get("drive_file_id")
+            if video_drive_id:
+                video_bytes = download_file_bytes(video_drive_id)
+            elif video_url:
+                resp = httpx.get(video_url, timeout=120, follow_redirects=True)
+                resp.raise_for_status()
+                video_bytes = resp.content
+            else:
                 errors.append(f"Slot {slot.get('post_date')}: no video URL")
                 failed += 1
                 continue
-
-            resp = httpx.get(video_url, timeout=120, follow_redirects=True)
-            resp.raise_for_status()
-            video_bytes = resp.content
 
             # Download music bytes (from Drive if available)
             music_drive_id = music.get("drive_file_id")
@@ -471,7 +544,6 @@ def batch_composite(
 
             # Save as a creative_job with type "video_composite"
             from src.database import get_supabase, TABLE_CREATIVE_JOBS
-            import json
             client = get_supabase()
             row = {
                 "source_media_id": media_id,
@@ -496,6 +568,288 @@ def batch_composite(
 
     if progress_callback:
         progress_callback(total, total, "Composites complete!")
+
+    return {
+        "total": total,
+        "success": success,
+        "skipped": skipped,
+        "failed": failed,
+        "errors": errors,
+        "total_cost": 0.0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Carousel batch (AI select images + captions)
+# ---------------------------------------------------------------------------
+
+def batch_generate_carousels(
+    slots: list[dict],
+    model: str = "claude-sonnet-4-6",
+    slide_count: int = 5,
+    progress_callback: ProgressCallback = None,
+) -> dict:
+    """Generate carousel drafts for calendar slots with route='carousel'.
+
+    Per slot: uses category/season context → AI selects images → generates captions
+    → saves carousel draft linked to calendar slot.
+
+    Returns: {total, success, skipped, failed, errors: [], total_cost}
+    """
+    from src.services.carousel_ai import select_carousel_images, generate_carousel_captions
+    from src.services.carousel_queries import save_carousel_draft, fetch_carousels_for_calendar_ids
+    from src.services.editorial_engine import _fetch_analyzed_media
+
+    total = len(slots)
+    success = 0
+    skipped = 0
+    failed = 0
+    errors = []
+    total_cost = 0.0
+
+    # Pre-check which slots already have carousels
+    cal_ids = [s["id"] for s in slots]
+    existing = fetch_carousels_for_calendar_ids(cal_ids)
+
+    # Fetch full media library for image selection
+    all_media = _fetch_analyzed_media()
+
+    for i, slot in enumerate(slots):
+        cal_id = slot["id"]
+        if progress_callback:
+            progress_callback(i, total, f"Slot {i+1}/{total}: generating carousel...")
+
+        # Skip if already has a carousel
+        if cal_id in existing and len(existing[cal_id]) > 0:
+            skipped += 1
+            continue
+
+        try:
+            cat = slot.get("target_category") or "experience"
+            season = slot.get("season_context") or "toute_saison"
+            theme_name = slot.get("theme_name") or ""
+            post_date = slot.get("post_date", "")
+
+            # Filter media by category (with fallback to all if too few)
+            cat_media = [m for m in all_media if m.get("category") == cat]
+            if len(cat_media) < slide_count * 2:
+                cat_media = all_media  # fallback to full library
+
+            # Build theme context for image selection
+            theme_desc = f"Hotel content for {cat} category, {season} season"
+            if theme_name:
+                theme_desc += f", theme: {theme_name}"
+
+            # Step 1: AI select images
+            sel_result = select_carousel_images(
+                theme_title=f"{cat.title()} — {post_date}",
+                theme_description=theme_desc,
+                ordering="narrative arc",
+                slide_count=slide_count,
+                media_list=cat_media,
+                model=model,
+            )
+            sel_cost = sel_result.get("_usage", {}).get("cost_usd", 0)
+            total_cost += sel_cost
+
+            selected = sel_result.get("selected", [])
+            if not selected:
+                errors.append(f"Slot {post_date}: AI returned no images")
+                failed += 1
+                continue
+
+            media_ids = [s["media_id"] for s in selected if s.get("media_id")]
+            if not media_ids:
+                errors.append(f"Slot {post_date}: no valid media IDs in selection")
+                failed += 1
+                continue
+
+            # Gather media dicts for caption generation
+            selected_media = [m for m in all_media if m["id"] in media_ids]
+            # Preserve ordering from AI selection
+            id_order = {mid: idx for idx, mid in enumerate(media_ids)}
+            selected_media.sort(key=lambda m: id_order.get(m["id"], 999))
+
+            # Step 2: Generate captions
+            cap_result = generate_carousel_captions(
+                theme_title=sel_result.get("carousel_title", f"{cat.title()} Carousel"),
+                theme_description=theme_desc,
+                selected_media=selected_media,
+                model=model,
+            )
+            cap_cost = cap_result.get("_usage", {}).get("cost_usd", 0)
+            total_cost += cap_cost
+
+            # Step 3: Save carousel draft linked to calendar
+            title = sel_result.get("carousel_title", f"{cat.title()} — {post_date}")
+            save_carousel_draft(
+                title=title,
+                media_ids=media_ids,
+                caption_es=cap_result.get("caption_es", ""),
+                caption_en=cap_result.get("caption_en", ""),
+                caption_fr=cap_result.get("caption_fr", ""),
+                hashtags=cap_result.get("hashtags", []),
+                calendar_id=cal_id,
+            )
+
+            update_calendar_creative_status(cal_id, "carousel_generated")
+            success += 1
+
+        except Exception as e:
+            errors.append(f"Slot {slot.get('post_date')} S{slot.get('slot_index', 1)}: {e}")
+            failed += 1
+
+    if progress_callback:
+        progress_callback(total, total, "Carousels complete!")
+
+    return {
+        "total": total,
+        "success": success,
+        "skipped": skipped,
+        "failed": failed,
+        "errors": errors,
+        "total_cost": total_cost,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Slideshow batch (Ken Burns from images — free, FFmpeg)
+# ---------------------------------------------------------------------------
+
+def batch_generate_slideshows(
+    slots: list[dict],
+    slide_count: int = 5,
+    duration_per_slide: float = 3.0,
+    progress_callback: ProgressCallback = None,
+) -> dict:
+    """Generate Ken Burns slideshow videos for calendar slots with route='reel-slideshow'.
+
+    Per slot: select top images by category/season → download → images_to_slideshow →
+    upload MP4 → save creative_job.
+
+    Returns: {total, success, skipped, failed, errors: [], total_cost}
+    """
+    from src.services.editorial_engine import _fetch_analyzed_media, score_media, get_current_season
+    from src.database import get_supabase, TABLE_CREATIVE_JOBS
+    from datetime import date
+
+    total = len(slots)
+    success = 0
+    skipped = 0
+    failed = 0
+    errors = []
+
+    # Pre-check which slots already have slideshows
+    cal_ids = [s["id"] for s in slots]
+    existing = fetch_slideshows_for_calendar_ids(cal_ids)
+
+    # Fetch full media library
+    all_media = _fetch_analyzed_media()
+    # Only images
+    image_media = [m for m in all_media if m.get("media_type") == "image"]
+
+    for i, slot in enumerate(slots):
+        cal_id = slot["id"]
+        if progress_callback:
+            progress_callback(i, total, f"Slot {i+1}/{total}: generating slideshow...")
+
+        # Skip if already has a slideshow
+        if cal_id in existing and len(existing[cal_id]) > 0:
+            skipped += 1
+            continue
+
+        try:
+            cat = slot.get("target_category") or "experience"
+            season = slot.get("season_context") or "toute_saison"
+            post_date_str = slot.get("post_date", date.today().isoformat())
+            post_date = date.fromisoformat(post_date_str) if isinstance(post_date_str, str) else post_date_str
+
+            # Score and rank images for this slot's category/season
+            scored = []
+            for m in image_media:
+                sc, _ = score_media(m, cat, season, "reel-slideshow", None, set(), post_date)
+                scored.append((m, sc))
+            scored.sort(key=lambda x: x[1], reverse=True)
+            top_media = [m for m, _ in scored[:slide_count]]
+
+            if len(top_media) < 2:
+                errors.append(f"Slot {post_date_str}: not enough images for slideshow")
+                failed += 1
+                continue
+
+            # Download image bytes
+            image_bytes_list = []
+            for m in top_media:
+                if m.get("drive_file_id"):
+                    try:
+                        raw = download_file_bytes(m["drive_file_id"])
+                        image_bytes_list.append(raw)
+                    except Exception:
+                        pass
+
+            if len(image_bytes_list) < 2:
+                errors.append(f"Slot {post_date_str}: could not download enough images")
+                failed += 1
+                continue
+
+            # Generate slideshow
+            result = images_to_slideshow(
+                image_bytes_list=image_bytes_list,
+                duration_per_slide=duration_per_slide,
+                aspect_ratio="9:16",
+            )
+
+            video_bytes = result["video_bytes"]
+
+            # Upload to Storage + Drive
+            media_id = slot.get("manual_media_id") or slot.get("media_id")
+            source_media = fetch_media_by_id(media_id) if media_id else None
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            stem = (source_media.get("file_name", "slideshow") if source_media else "slideshow").rsplit(".", 1)[0][:40]
+            fname = f"{stem}_slideshow_{ts}.mp4"
+
+            video_url = upload_to_supabase_storage(video_bytes, fname, "video/mp4")
+
+            drive_fid = None
+            try:
+                folders = ensure_generated_folders()
+                drive_result = upload_file_to_drive(
+                    video_bytes, fname, "video/mp4", folders["videos"],
+                )
+                drive_fid = drive_result["id"]
+            except Exception:
+                pass
+
+            # Save as creative_job with type "slideshow"
+            client = get_supabase()
+            row = {
+                "source_media_id": media_id,
+                "job_type": "slideshow",
+                "provider": "ffmpeg",
+                "status": "completed",
+                "params": json.dumps({
+                    "slides": len(image_bytes_list),
+                    "duration_per_slide": duration_per_slide,
+                    "media_ids": [m["id"] for m in top_media],
+                    "batch": True,
+                }),
+                "cost_usd": 0.0,
+                "result_url": video_url,
+                "calendar_id": cal_id,
+            }
+            if drive_fid:
+                row["drive_file_id"] = drive_fid
+            client.table(TABLE_CREATIVE_JOBS).insert(row).execute()
+
+            update_calendar_creative_status(cal_id, "slideshow_generated")
+            success += 1
+
+        except Exception as e:
+            errors.append(f"Slot {slot.get('post_date')} S{slot.get('slot_index', 1)}: {e}")
+            failed += 1
+
+    if progress_callback:
+        progress_callback(total, total, "Slideshows complete!")
 
     return {
         "total": total,
@@ -544,6 +898,25 @@ def estimate_video_cost(
         "total": round(per_slot * slot_count, 2),
         "model": model,
         "duration": duration,
+        "slots": slot_count,
+    }
+
+
+def estimate_carousel_cost(
+    slot_count: int,
+    model: str = "claude-sonnet-4-6",
+) -> dict:
+    """Estimate cost for carousel batch (2 Claude calls per slot: select + caption)."""
+    rates = {"claude-sonnet-4-6": (3.0, 15.0), "claude-haiku-4-5-20251001": (0.8, 4.0)}
+    inp_rate, out_rate = rates.get(model, (3.0, 15.0))
+    # Select: ~3000 input, ~800 output; Caption: ~1500 input, ~600 output
+    select_cost = (3000 * inp_rate + 800 * out_rate) / 1_000_000
+    caption_cost = (1500 * inp_rate + 600 * out_rate) / 1_000_000
+    per_slot = select_cost + caption_cost
+    return {
+        "per_slot": round(per_slot, 4),
+        "total": round(per_slot * slot_count, 4),
+        "model": model,
         "slots": slot_count,
     }
 

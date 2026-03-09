@@ -26,7 +26,16 @@ sidebar_css()
 page_title("Rules & Themes", "Configure editorial strategy")
 
 CATEGORIES = ["chambre", "commun", "exterieur", "gastronomie", "experience", "destination"]
-FORMATS = ["feed", "story", "reel"]
+ROUTES = ["feed", "carousel", "reel-kling", "reel-veo", "reel-slideshow"]
+ROUTE_LABELS = {
+    "feed": "Image Post",
+    "carousel": "Carousel",
+    "reel-kling": "Reel (Kling)",
+    "reel-veo": "Reel (Veo)",
+    "reel-slideshow": "Reel (Slideshow)",
+}
+# Backward compat: map old values to new routes
+_LEGACY_ROUTE_MAP = {"story": "feed", "reel": "reel-kling"}
 FOCUS_OPTIONS = ["hotel", "destination"]
 FOCUS_LABELS = {"hotel": "Hotel", "destination": "Destination (Sitges Insider)"}
 ASPECT_RATIOS = ["1:1", "4:5", "9:16", "16:9", "3:4"]
@@ -73,8 +82,12 @@ with tab_rules:
                         time_val = st.text_input("Preferred Time", value=rule.get("preferred_time") or "10:00", key=f"rtime_{rule['id']}")
 
                     with col2:
-                        fmt_idx = FORMATS.index(rule["preferred_format"]) if rule.get("preferred_format") in FORMATS else 0
-                        fmt = st.selectbox("Format", FORMATS, index=fmt_idx, key=f"rfmt_{rule['id']}")
+                        _raw_fmt = rule.get("preferred_format") or "feed"
+                        _route_val = _LEGACY_ROUTE_MAP.get(_raw_fmt, _raw_fmt)
+                        if _route_val not in ROUTES:
+                            _route_val = "feed"
+                        fmt_idx = ROUTES.index(_route_val)
+                        fmt = st.selectbox("Route", ROUTES, index=fmt_idx, format_func=lambda r: ROUTE_LABELS[r], key=f"rfmt_{rule['id']}")
                         ar_idx = ASPECT_RATIOS.index(rule["preferred_aspect_ratio"]) if rule.get("preferred_aspect_ratio") in ASPECT_RATIOS else 0
                         aspect = st.selectbox("Aspect Ratio", ASPECT_RATIOS, index=ar_idx, key=f"rar_{rule['id']}")
 
@@ -123,7 +136,7 @@ with tab_rules:
             new_slot = st.number_input("Slot Index", min_value=1, max_value=3, value=1, key="new_slot")
         with c2:
             new_cat = st.selectbox("Category", CATEGORIES, key="new_cat")
-            new_fmt = st.selectbox("Format", FORMATS, key="new_fmt")
+            new_fmt = st.selectbox("Route", ROUTES, format_func=lambda r: ROUTE_LABELS[r], key="new_fmt")
         with c3:
             new_ar = st.selectbox("Aspect Ratio", ASPECT_RATIOS, key="new_ar")
             new_mq = st.slider("Min Quality", 1, 10, 6, key="new_mq")
