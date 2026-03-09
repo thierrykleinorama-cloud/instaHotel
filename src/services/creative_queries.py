@@ -233,6 +233,21 @@ def fetch_media_names(media_ids: list[str]) -> dict[str, str]:
     return {r["id"]: r["file_name"] for r in result.data}
 
 
+def fetch_media_info(media_ids: list[str]) -> dict[str, dict]:
+    """Return {media_id: {file_name, drive_file_id, category}} for a list of media IDs."""
+    if not media_ids:
+        return {}
+    client = get_supabase()
+    unique_ids = list(set(media_ids))
+    result = (
+        client.table(TABLE_MEDIA_LIBRARY)
+        .select("id,file_name,drive_file_id,category")
+        .in_("id", unique_ids)
+        .execute()
+    )
+    return {r["id"]: r for r in result.data}
+
+
 # -----------------------------------------------------------
 # Calendar-aware fetchers (for Batch Pipeline)
 # -----------------------------------------------------------

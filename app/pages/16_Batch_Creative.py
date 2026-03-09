@@ -19,8 +19,9 @@ from src.services.creative_queries import (
     fetch_videos_for_calendar_ids,
     fetch_music_for_calendar_ids,
     fetch_composite_for_calendar_ids,
-    fetch_media_names,
+    fetch_media_info,
 )
+from app.components.media_grid import _fetch_thumbnail_b64
 from src.services.batch_creative import (
     batch_generate_scenarios,
     batch_generate_videos,
@@ -87,7 +88,7 @@ with st.sidebar:
     start_date = st.date_input("Start Date", value=default_start, key="bp_start")
     weeks = st.slider("Weeks", 1, 8, 4, key="bp_weeks")
     end_date = start_date + timedelta(weeks=weeks) - timedelta(days=1)
-    st.caption(f"Range: {start_date} → {end_date}")
+    st.caption(f"Range: {start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}")
 
     st.divider()
     st.subheader("Scenario Settings")
@@ -141,13 +142,13 @@ video_map = fetch_videos_for_calendar_ids(cal_ids)
 music_map = fetch_music_for_calendar_ids(cal_ids)
 composite_map = fetch_composite_for_calendar_ids(cal_ids)
 
-# Fetch media names for display
+# Fetch media info for display (name + drive_file_id for thumbnails)
 all_media_ids = list({
     s.get("manual_media_id") or s.get("media_id")
     for s in slots_with_media
     if s.get("manual_media_id") or s.get("media_id")
 })
-media_names = fetch_media_names(all_media_ids)
+media_info = fetch_media_info(all_media_ids)
 
 # -------------------------------------------------------
 # Compute per-slot status
@@ -268,6 +269,10 @@ with b1:
         _sc_label, type="primary", use_container_width=True,
         disabled=_sc_disabled, key="bp_run_scenarios",
     )
+    if scenario_eligible > 0:
+        st.caption(f"Generate {scenario_count} video concepts for {scenario_eligible} slots without scenarios")
+    else:
+        st.caption("All slots have scenarios")
 
 with b2:
     _vid_disabled = video_eligible <= 0
@@ -276,6 +281,12 @@ with b2:
         _vid_label, type="primary", use_container_width=True,
         disabled=_vid_disabled, key="bp_run_videos",
     )
+    if video_eligible > 0:
+        st.caption(f"Create video from accepted scenario for {video_eligible} slots")
+    elif scenarios_accepted > 0 and videos_total > 0 and videos_accepted == 0:
+        st.caption("Review videos in Drafts Review first")
+    else:
+        st.caption("Need accepted scenarios first")
 
 with b3:
     _mus_disabled = music_eligible <= 0
@@ -284,6 +295,10 @@ with b3:
         _mus_label, type="primary", use_container_width=True,
         disabled=_mus_disabled, key="bp_run_music",
     )
+    if music_eligible > 0:
+        st.caption(f"Generate background music for {music_eligible} accepted videos")
+    else:
+        st.caption("Need accepted videos first")
 
 with b4:
     _comp_disabled = composite_eligible <= 0
@@ -292,6 +307,10 @@ with b4:
         _comp_label, type="primary", use_container_width=True,
         disabled=_comp_disabled, key="bp_run_composite",
     )
+    if composite_eligible > 0:
+        st.caption(f"Merge video + music for {composite_eligible} slots (free)")
+    else:
+        st.caption("Need accepted video + music")
 
 # -------------------------------------------------------
 # Progress area — run batch operations
@@ -431,12 +450,29 @@ if run_composite:
 st.divider()
 st.subheader("Slot Details")
 
-# Build table data
-table_rows = []
+# Header row
+_h1, _h2, _h3, _h4, _h5, _h6, _h7 = st.columns([1.2, 2.5, 1.5, 1.5, 1.0, 1.0, 1.3])
+_h1.markdown("**Photo**")
+_h2.markdown("**Slot**")
+_h3.markdown("**Scenarios**")
+_h4.markdown("**Video**")
+_h5.markdown("**Music**")
+_h6.markdown("**Comp.**")
+_h7.markdown("**Stage**")
+
+# Render slot rows with thumbnails
 for slot in slots_with_media:
     cid = slot["id"]
     mid = slot.get("manual_media_id") or slot.get("media_id")
-    mname = media_names.get(mid, "—") if mid else "—"
+    mi = media_info.get(mid, {}) if mid else {}
+    mname = mi.get("file_name", "—")
+    drive_fid = mi.get("drive_file_id")
+    cat = slot.get("target_category") or mi.get("category") or "—"
+
+    # Format date as DD/MM/YYYY
+    _pd = slot.get("post_date", "")
+    if isinstance(_pd, str) and len(_pd) >= 10:
+        _pd = f"{_pd[8:10]}/{_pd[5:7]}/{_pd[:4]}"
 
     # Scenarios
     sc_list = scenario_map.get(cid, [])
@@ -478,28 +514,40 @@ for slot in slots_with_media:
     comp_list = composite_map.get(cid, [])
     comp_label = ":green[done]" if comp_list else "—"
 
-    table_rows.append({
-        "Date": str(slot.get("post_date", "")),
-        "Slot": slot.get("slot_index", 1),
-        "Category": slot.get("category", "—"),
-        "Media": mname[:30],
-        "Scenarios": sc_label,
-        "Video": vid_label,
-        "Music": mus_label,
-        "Composite": comp_label,
-    })
-
-# Render as markdown table
-if table_rows:
-    header = "| Date | S | Category | Media | Scenarios | Video | Music | Composite |"
-    sep = "|------|---|----------|-------|-----------|-------|-------|-----------|"
-    rows_md = [header, sep]
-    for r in table_rows:
-        rows_md.append(
-            f"| {r['Date']} | {r['Slot']} | {r['Category']} | {r['Media']} "
-            f"| {r['Scenarios']} | {r['Video']} | {r['Music']} | {r['Composite']} |"
-        )
-    st.markdown("\n".join(rows_md))
+    # Render row: thumbnail | info | pipeline status
+    rc1, rc2, rc3, rc4, rc5, rc6, rc7 = st.columns([1.2, 2.5, 1.5, 1.5, 1.0, 1.0, 1.3])
+    with rc1:
+        if drive_fid:
+            try:
+                b64 = _fetch_thumbnail_b64(drive_fid)
+                if b64:
+                    st.image(f"data:image/jpeg;base64,{b64}", width=80)
+                else:
+                    st.caption("no thumb")
+            except Exception:
+                st.caption("no thumb")
+        else:
+            st.caption("—")
+    with rc2:
+        st.markdown(f"**{_pd}** S{slot.get('slot_index', 1)}  \n{cat} · {mname[:25]}")
+    with rc3:
+        st.markdown(f"Scenarios: {sc_label}")
+    with rc4:
+        st.markdown(f"Video: {vid_label}")
+    with rc5:
+        st.markdown(f"Music: {mus_label}")
+    with rc6:
+        st.markdown(f"Comp: {comp_label}")
+    with rc7:
+        # Show creative_status badge
+        _cs = slot.get("creative_status")
+        _badges = {
+            "scenarios_generated": ":violet[Scenarios]",
+            "video_generated": ":blue[Video]",
+            "music_generated": ":orange[Music]",
+            "complete": ":green[Complete]",
+        }
+        st.markdown(_badges.get(_cs, ":gray[—]"))
 
 # -------------------------------------------------------
 # Link to Drafts Review
