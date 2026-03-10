@@ -248,10 +248,10 @@ c1, c2, c3, c4, c5, c6 = st.columns(6)
 scenario_eligible = len(reel_slots) - scenarios_total
 sc_est = estimate_scenario_cost(max(scenario_eligible, 0), scenario_count, scenario_include_image, scenario_model)
 with c1:
-    st.metric("SCENARIOS", f"{scenarios_total}/{len(reel_slots)}")
-    st.caption(f":green[{scenarios_accepted} accepted]" if scenarios_accepted else "0 accepted")
+    st.metric("SCENARIOS", f"{scenarios_total}/{len(reel_slots)} reel slots")
+    st.caption(f":green[{scenarios_accepted} slots accepted]" if scenarios_accepted else "0 accepted")
     if scenario_eligible > 0:
-        st.caption(f"~${sc_est['total']:.2f}")
+        st.caption(f"{scenario_eligible} slots need scenarios · ~${sc_est['total']:.2f}")
 
 # Videos (reel-kling + reel-veo)
 video_eligible = scenarios_accepted - videos_total
@@ -263,40 +263,41 @@ vid_est_total = (
     + estimate_video_cost(max(_veo_eligible, 0), "veo-3.1-fast", video_duration_veo)["total"]
 )
 with c2:
-    st.metric("VIDEOS", f"{videos_total}/{scenarios_accepted or '—'}")
-    st.caption(f":green[{videos_accepted} accepted]" if videos_accepted else "0 accepted")
+    st.metric("VIDEOS", f"{videos_total}/{scenarios_accepted or '—'} accepted slots")
+    st.caption(f":green[{videos_accepted} videos accepted]" if videos_accepted else "0 accepted")
     if video_eligible > 0:
-        st.caption(f"~${vid_est_total:.2f}")
+        st.caption(f"{video_eligible} to generate · ~${vid_est_total:.2f}")
 
 # Music (reel-kling + reel-slideshow)
 _kling_accepted_for_music = sum(1 for s in reel_kling_slots if any(v.get("status") == "accepted" for v in video_map.get(s["id"], [])))
 _ss_done = slideshows_total
 music_eligible = (_kling_accepted_for_music + _ss_done) - music_total
 mus_est = estimate_music_cost(max(music_eligible, 0), music_duration)
+_music_ready = _kling_accepted_for_music + _ss_done
 with c3:
-    st.metric("MUSIC", f"{music_total}/{_kling_accepted_for_music + _ss_done or '—'}")
+    st.metric("MUSIC", f"{music_total}/{_music_ready or '—'} ready slots")
     st.caption(f":green[{music_accepted} accepted]" if music_accepted else "0 accepted")
     if music_eligible > 0:
-        st.caption(f"~${mus_est['total']:.2f}")
+        st.caption(f"{music_eligible} to generate · ~${mus_est['total']:.2f}")
 
 # Composite
-composite_eligible = min(_kling_accepted_for_music + _ss_done, music_accepted) - composites_total
+composite_eligible = min(_music_ready, music_accepted) - composites_total
 with c4:
-    st.metric("COMPOSITE", f"{composites_total}/{min(_kling_accepted_for_music + _ss_done, music_accepted) or '—'}")
+    st.metric("COMPOSITE", f"{composites_total}/{min(_music_ready, music_accepted) or '—'} ready")
     st.caption(":green[Free (FFmpeg)]")
 
 # Carousel
 carousel_eligible = len(route_groups.get("carousel", [])) - carousels_total
 car_est = estimate_carousel_cost(max(carousel_eligible, 0), scenario_model)
 with c5:
-    st.metric("CAROUSELS", f"{carousels_total}/{len(route_groups.get('carousel', []))}")
+    st.metric("CAROUSELS", f"{carousels_total}/{len(route_groups.get('carousel', []))} slots")
     if carousel_eligible > 0:
-        st.caption(f"~${car_est['total']:.2f}")
+        st.caption(f"{carousel_eligible} to generate · ~${car_est['total']:.2f}")
 
 # Slideshow
 slideshow_eligible = len(route_groups.get("reel-slideshow", [])) - slideshows_total
 with c6:
-    st.metric("SLIDESHOWS", f"{slideshows_total}/{len(route_groups.get('reel-slideshow', []))}")
+    st.metric("SLIDESHOWS", f"{slideshows_total}/{len(route_groups.get('reel-slideshow', []))} slots")
     st.caption(":green[Free (FFmpeg)]")
 
 # Next action hints
@@ -310,7 +311,7 @@ if scenarios_total > 0 and scenarios_accepted < scenarios_total:
         and cid in scenario_map
     )
     if _unreviewed > 0:
-        _hints.append(f"Go to **Drafts Review** → accept best scenario ({_unreviewed} to review)")
+        _hints.append(f"Go to **Drafts Review** → {_unreviewed} reel slot{'s have' if _unreviewed > 1 else ' has'} draft scenarios waiting for accept/reject")
 if video_eligible > 0:
     _hints.append(f"Run videos for **{video_eligible}** accepted scenarios (~${vid_est_total:.2f})")
 if carousel_eligible > 0:
