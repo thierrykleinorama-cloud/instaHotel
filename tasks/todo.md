@@ -140,6 +140,7 @@
 ### Content Production (enable batch content creation)
 - [x] **Batch calendar creative workflow** — Generate scenarios for all calendar slots in one click → review/accept/reject via Drafts Review → generate videos → music → assemble. Long-running batch pattern. DONE 2026-03-06.
 - [x] **Content type routing** — Route system replaces format: feed/carousel/reel-kling/reel-veo/reel-slideshow. Each route defines full production path. Batch Pipeline routes slots by route, no manual model selector. Rules page updated with route selectbox. Calendar shows route badges + generated content preview (video players, carousel thumbnails). DB migration: carousel_drafts gets calendar_id FK. DONE 2026-03-09.
+- [x] **Production Workflow UX Redesign** — Stepper pipeline with inline review on Production Pipeline page. Gates between steps, scenarios grouped by slot with accept-one pattern, captions as final step. Calendar shows multi-step pipeline progress badges (Sc/Vid/Mus/Comp). Drafts Review renamed to Review History with slot grouping toggle. Shared review component extracted to `app/components/review_controls.py`. DONE 2026-03-10.
 ### Drafts Review UX (short-term polish) — DONE 2026-03-09
 - [x] **Scenario thumbnails** — Source photo thumbnail shown next to scenario description in Drafts Review
 - [x] **Carousel preview in Drafts Review** — Full IG-style carousel preview with `render_ig_preview_carousel()` inline, side-by-side with captions + hashtags
@@ -178,6 +179,7 @@
 - [ ] **API change monitor agent** — Weekly automated check of all tool providers (Replicate, Google Gemini, Stability AI, Anthropic) for new models, pricing changes, new API capabilities. Report via WhatsApp.
 
 ### Testing & Maintenance
+- [ ] **Test Streamlit Cloud after deploy** — Reboot app from dashboard, verify music playback works in Drafts Review (Drive token refresh). Also check Batch Pipeline route summary + Calendar route badges.
 - [ ] **User testing Phase 2.5A** — Test AI enhancement with real STABILITY_API_KEY + REPLICATE_API_TOKEN
 
 ---

@@ -51,6 +51,8 @@ from src.services.creative_queries import (
     fetch_accepted_video_for_calendar,
     fetch_composite_for_calendar_ids,
     fetch_videos_for_calendar_ids,
+    fetch_scenarios_for_calendar_ids,
+    fetch_music_for_calendar_ids,
     fetch_slideshow_for_calendar as _fetch_slideshow_for_cal,
     fetch_slideshows_for_calendar_ids,
 )
@@ -211,6 +213,86 @@ if not calendar_data:
 # Pre-fetch content for all visible calendar entries
 _calendar_ids = [e["id"] for e in calendar_data]
 _content_map = fetch_content_for_calendar_range(_calendar_ids)
+
+# Pre-fetch pipeline status maps for progress badges
+_scenario_map = fetch_scenarios_for_calendar_ids(_calendar_ids)
+_video_map = fetch_videos_for_calendar_ids(_calendar_ids)
+_music_map = fetch_music_for_calendar_ids(_calendar_ids)
+_composite_map = fetch_composite_for_calendar_ids(_calendar_ids)
+_carousel_map_all = fetch_carousels_for_calendar_ids(_calendar_ids)
+_slideshow_map_all = fetch_slideshows_for_calendar_ids(_calendar_ids)
+
+
+def _pipeline_badges(entry_id: str, route: str) -> str:
+    """Return multi-step pipeline progress badges for a calendar slot."""
+    badges = []
+    if route in ("reel-kling", "reel-veo"):
+        # Scenarios
+        sc_list = _scenario_map.get(entry_id, [])
+        sc_accepted = any(s.get("status") == "accepted" for s in sc_list)
+        sc_count = len(sc_list)
+        if sc_accepted:
+            badges.append(":green[Sc:ok]")
+        elif sc_count > 0:
+            badges.append(f":orange[Sc:{sc_count}]")
+        else:
+            badges.append(":gray[Sc:-]")
+        # Videos
+        vid_list = _video_map.get(entry_id, [])
+        vid_accepted = any(v.get("status") == "accepted" for v in vid_list)
+        if vid_accepted:
+            badges.append(":green[Vid:ok]")
+        elif vid_list:
+            badges.append(":orange[Vid:?]")
+        else:
+            badges.append(":gray[Vid:-]")
+        # Music + Composite (only for routes that need it)
+        if route == "reel-kling":
+            mus_list = _music_map.get(entry_id, [])
+            mus_accepted = any(m.get("status") == "accepted" for m in mus_list)
+            if mus_accepted:
+                badges.append(":green[Mus:ok]")
+            elif mus_list:
+                badges.append(":orange[Mus:?]")
+            else:
+                badges.append(":gray[Mus:-]")
+            comp_list = _composite_map.get(entry_id, [])
+            if comp_list:
+                badges.append(":green[Comp:ok]")
+            else:
+                badges.append(":gray[Comp:-]")
+    elif route == "reel-slideshow":
+        ss_list = _slideshow_map_all.get(entry_id, [])
+        if ss_list:
+            badges.append(":green[SS:ok]")
+        else:
+            badges.append(":gray[SS:-]")
+        mus_list = _music_map.get(entry_id, [])
+        mus_accepted = any(m.get("status") == "accepted" for m in mus_list)
+        if mus_accepted:
+            badges.append(":green[Mus:ok]")
+        elif mus_list:
+            badges.append(":orange[Mus:?]")
+        else:
+            badges.append(":gray[Mus:-]")
+        comp_list = _composite_map.get(entry_id, [])
+        if comp_list:
+            badges.append(":green[Comp:ok]")
+        else:
+            badges.append(":gray[Comp:-]")
+    elif route == "carousel":
+        car_list = _carousel_map_all.get(entry_id, [])
+        if car_list:
+            car_status = car_list[0].get("status", "draft")
+            if car_status == "accepted":
+                badges.append(":green[Car:ok]")
+            else:
+                badges.append(":orange[Car:draft]")
+        else:
+            badges.append(":gray[Car:-]")
+    # Feed: no pipeline badges needed
+    return " ".join(badges)
+
 
 # -------------------------------------------------------
 # Sidebar — Batch Caption Generation
@@ -498,6 +580,10 @@ if view_mode == "Week Grid":
                             caption_icon = " &check;" if has_content else ""
                             st.markdown(f":{STATUS_COLORS.get(status, 'gray')}[●] {cat}{_dest_tag}{_route_tag}{caption_icon}")
                             st.caption(f"S{slot} | {score_str}pts")
+                            # Pipeline progress dots
+                            _grid_badges = _pipeline_badges(entry["id"], _route)
+                            if _grid_badges:
+                                st.caption(_grid_badges)
                         else:
                             st.markdown(f":gray[○] {cat}{_dest_tag}{_route_tag}")
                             st.caption(f"S{slot} | no media")
@@ -533,17 +619,9 @@ else:
         _route_label = ROUTE_LABELS.get(_route, _route)
         _route_color = ROUTE_COLORS.get(_route, "gray")
         _route_tag = f" | :{_route_color}[{_route_label}]"
-        # Creative pipeline status badge
-        _cs = entry.get("creative_status")
-        _CREATIVE_BADGES = {
-            "scenarios_generated": ":violet[Scenarios]",
-            "video_generated": ":blue[Video]",
-            "music_generated": ":orange[Music]",
-            "complete": ":green[Complete]",
-            "carousel_generated": ":orange[Carousel]",
-            "slideshow_generated": ":violet[Slideshow]",
-        }
-        _creative_tag = f" | {_CREATIVE_BADGES[_cs]}" if _cs in _CREATIVE_BADGES else ""
+        # Pipeline progress badges (multi-step)
+        _pipe_badges = _pipeline_badges(entry["id"], _route)
+        _creative_tag = f" | {_pipe_badges}" if _pipe_badges else ""
 
         _is_expanded = st.session_state.get("cal_expanded_id") == entry["id"]
         with st.expander(f":{color}[●] {post_date} — S{slot} | {cat}{_focus_tag}{_route_tag} | {score_str}pts | {status}{caption_tag}{_creative_tag}", expanded=_is_expanded):

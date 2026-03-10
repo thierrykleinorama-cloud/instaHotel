@@ -145,3 +145,7 @@
 3. **Plan mode** : Pour les features non triviales, planifier avant d'implementer
 4. **Memory sync** : Update todo.md + MEMORY.md + architecture.md together when completing features
 5. **Route = path** : Content type routing defines full production pipeline per slot
+6. **Stepper > flat buttons** : Multi-step pipelines work better as guided steppers with gates (disabled buttons + messages when prereqs not met) than flat button grids
+7. **Inline review > page bounce** : Reviewing content on the same page where it's generated eliminates page switching. Accept-one pattern (accept variant A, auto-reject B/C) reduces decisions
+8. **Extract shared components** : When the same widget (review controls) appears in multiple pages, extract to `app/components/` — keeps behavior consistent and code DRY
+9. **Group by slot** : Flat lists of scenarios/videos are meaningless without slot context. Always group creative items by their calendar slot for user clarity

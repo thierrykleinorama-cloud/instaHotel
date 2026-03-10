@@ -436,6 +436,27 @@ def fetch_slideshows_for_calendar_ids(calendar_ids: list[str]) -> dict[str, list
     return out
 
 
+def accept_scenario_reject_others(scenario_id: str, calendar_id: str) -> bool:
+    """Accept one scenario and reject all other draft scenarios for the same calendar slot.
+
+    This implements the 'accept-one' pattern: picking a scenario auto-rejects alternatives.
+    """
+    client = get_supabase()
+    try:
+        # Accept the chosen one
+        client.table(TABLE_GENERATED_SCENARIOS).update(
+            {"status": "accepted"}
+        ).eq("id", scenario_id).execute()
+        # Reject all others for the same calendar slot that are still draft
+        client.table(TABLE_GENERATED_SCENARIOS).update(
+            {"status": "rejected"}
+        ).eq("calendar_id", calendar_id).neq("id", scenario_id).eq("status", "draft").execute()
+        return True
+    except Exception as e:
+        print(f"Accept-one scenario failed: {e}")
+        return False
+
+
 def fetch_rejected_scenarios(limit: int = 50) -> list[dict]:
     """Fetch recently rejected scenarios with feedback, for prompt improvement."""
     client = get_supabase()

@@ -40,13 +40,13 @@ pg = st.navigation(
             st.Page("pages/13_Carousel_Builder.py", title="Carousel", icon=":material/view_carousel:"),
         ],
         "Production": [
-            st.Page("pages/16_Batch_Creative.py", title="Batch Pipeline", icon=":material/auto_fix_high:"),
+            st.Page("pages/16_Batch_Creative.py", title="Production Pipeline", icon=":material/auto_fix_high:"),
             st.Page("pages/14_Cost_Dashboard.py", title="Cost Dashboard", icon=":material/payments:"),
         ],
         "Editorial": [
-            st.Page("pages/11_Drafts_Review.py", title="Drafts Review", icon=":material/rate_review:"),
             st.Page("pages/9_Calendar.py", title="Calendar", icon=":material/calendar_month:"),
             st.Page("pages/10_Rules.py", title="Rules", icon=":material/tune:"),
+            st.Page("pages/11_Drafts_Review.py", title="Review History", icon=":material/rate_review:"),
             st.Page("pages/15_Prompt_Viewer.py", title="Prompts", icon=":material/description:"),
         ],
     }
