@@ -80,10 +80,12 @@ def render_review_controls(item_id: str, item_type: str, current_status: str, ke
 
 
 def render_inline_review(item_id: str, item_type: str, current_status: str, key_prefix: str,
-                         on_accept_callback=None):
+                         on_accept_callback=None,
+                         calendar_id: str = None, accept_creative_status: str = None):
     """Compact inline review for Production Pipeline — accept/reject with feedback.
 
     on_accept_callback: optional callable(item_id) invoked after accept (e.g. to reject siblings).
+    calendar_id + accept_creative_status: if both set, advances creative_status on accept.
     Returns True if an action was taken.
     """
     already_reviewed = current_status in ("accepted", "rejected")
@@ -106,6 +108,9 @@ def render_inline_review(item_id: str, item_type: str, current_status: str, key_
             _do_feedback(item_id, item_type, "accepted", feedback_text, 3)
             if on_accept_callback:
                 on_accept_callback(item_id)
+            if calendar_id and accept_creative_status:
+                from src.services.editorial_queries import update_calendar_creative_status
+                update_calendar_creative_status(calendar_id, accept_creative_status)
             st.rerun()
     with col_r:
         if st.button("Reject", key=f"{key_prefix}_rej_{item_id}",

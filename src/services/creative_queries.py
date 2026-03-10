@@ -440,6 +440,7 @@ def accept_scenario_reject_others(scenario_id: str, calendar_id: str) -> bool:
     """Accept one scenario and reject all other draft scenarios for the same calendar slot.
 
     This implements the 'accept-one' pattern: picking a scenario auto-rejects alternatives.
+    Also advances creative_status to 'scenario_accepted'.
     """
     client = get_supabase()
     try:
@@ -451,6 +452,9 @@ def accept_scenario_reject_others(scenario_id: str, calendar_id: str) -> bool:
         client.table(TABLE_GENERATED_SCENARIOS).update(
             {"status": "rejected"}
         ).eq("calendar_id", calendar_id).neq("id", scenario_id).eq("status", "draft").execute()
+        # Advance creative_status on the calendar entry
+        from src.services.editorial_queries import update_calendar_creative_status
+        update_calendar_creative_status(calendar_id, "scenario_accepted")
         return True
     except Exception as e:
         print(f"Accept-one scenario failed: {e}")

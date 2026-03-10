@@ -1,7 +1,6 @@
 """
 InstaHotel — Production Pipeline
-Guided stepper with inline review: generate AND review in one page.
-No more bouncing between pages.
+Route-based tabs: one tab per content type, each self-contained with settings + pipeline steps.
 """
 import json
 import sys
@@ -17,7 +16,7 @@ from datetime import date, timedelta
 from app.components.ui import sidebar_css, page_title
 from app.components.review_controls import render_inline_review, STATUS_COLORS
 from app.components.media_grid import _fetch_thumbnail_b64
-from src.services.editorial_queries import fetch_calendar_range
+from src.services.editorial_queries import fetch_calendar_range, update_calendar_creative_status
 from src.services.creative_queries import (
     fetch_scenarios_for_calendar_ids,
     fetch_videos_for_calendar_ids,
@@ -26,9 +25,6 @@ from src.services.creative_queries import (
     fetch_slideshows_for_calendar_ids,
     fetch_media_info,
     accept_scenario_reject_others,
-    update_scenario_feedback,
-    update_music_feedback,
-    update_job_feedback,
 )
 from src.services.carousel_queries import fetch_carousels_for_calendar_ids
 from src.services.content_queries import fetch_content_for_calendar_range
@@ -50,16 +46,17 @@ from src.services.batch_creative import (
 )
 from src.services.content_generator import generate_for_slot, estimate_batch_cost
 from src.services.caption_generator import DEFAULT_MODEL
+from src.prompts.tone_variants import TONE_LABELS
 
 sidebar_css()
-page_title("Production Pipeline", "Generate and review content — one page, guided steps")
+page_title("Production Pipeline", "Generate and review content — one tab per route")
 
 ROUTE_LABELS = {
-    "feed": "Image Post",
+    "feed": "Image Posts",
     "carousel": "Carousel",
     "reel-kling": "Reel (Kling)",
     "reel-veo": "Reel (Veo)",
-    "reel-slideshow": "Reel (Slideshow)",
+    "reel-slideshow": "Slideshow",
 }
 ROUTE_COLORS = {
     "feed": "gray",
@@ -85,14 +82,14 @@ for key, default in [
         st.session_state[key] = default
 
 # -------------------------------------------------------
-# Sidebar controls
+# Sidebar — date range only
 # -------------------------------------------------------
 with st.sidebar:
     st.subheader("Date Range")
     today = date.today()
     default_start = today - timedelta(days=today.weekday())
 
-    # Check if there's in-progress creative work in a recent range
+    # Auto-detect recent creative work
     _lookback_start = default_start - timedelta(weeks=4)
     _recent_cal = fetch_calendar_range(_lookback_start, default_start - timedelta(days=1))
     _has_creative = [e for e in _recent_cal if e.get("creative_status")]
@@ -107,53 +104,6 @@ with st.sidebar:
     weeks = st.slider("Weeks", 1, 8, 4, key="bp_weeks")
     end_date = start_date + timedelta(weeks=weeks) - timedelta(days=1)
     st.caption(f"Range: {start_date.strftime('%d/%m/%Y')} -> {end_date.strftime('%d/%m/%Y')}")
-
-    st.divider()
-    st.subheader("Scenario Settings")
-    scenario_count = st.slider("Scenarios per slot", 2, 5, 3, key="bp_scenario_count")
-    scenario_include_image = st.checkbox("Include image in prompt", value=True, key="bp_scenario_img")
-    scenario_model = st.selectbox(
-        "Model", ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-        key="bp_scenario_model",
-    )
-
-    st.divider()
-    st.subheader("Video Settings")
-    st.caption("Video model is set per-slot by route (Kling or Veo)")
-    video_duration_kling = st.selectbox("Kling Duration", [5, 10], index=0, key="bp_video_dur_kling")
-    video_duration_veo = st.selectbox("Veo Duration", [4, 6, 8], index=0, key="bp_video_dur_veo")
-    video_aspect = st.selectbox("Aspect Ratio", ["9:16", "16:9", "1:1"], key="bp_video_ar")
-
-    st.divider()
-    st.subheader("Music Settings")
-    music_duration = st.slider("Duration (sec)", 5, 30, 10, key="bp_music_dur")
-
-    st.divider()
-    st.subheader("Composite Settings")
-    composite_volume = st.slider("Music Volume", 0.1, 1.0, 0.3, step=0.1, key="bp_comp_vol")
-
-    st.divider()
-    st.subheader("Carousel Settings")
-    carousel_slides = st.slider("Images per carousel", 3, 10, 5, key="bp_carousel_slides")
-
-    st.divider()
-    st.subheader("Slideshow Settings")
-    slideshow_slides = st.slider("Images per slideshow", 3, 10, 5, key="bp_ss_slides")
-    slideshow_duration = st.slider("Seconds per slide", 2.0, 5.0, 3.0, step=0.5, key="bp_ss_dur")
-
-    st.divider()
-    st.subheader("Caption Settings")
-    caption_model = st.selectbox(
-        "Caption Model", ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-        key="bp_caption_model",
-    )
-    caption_include_image = st.checkbox("Include image in caption prompt", value=False, key="bp_caption_img")
-    from src.prompts.tone_variants import TONE_LABELS
-    caption_tone = st.selectbox(
-        "Tone", list(TONE_LABELS.keys()),
-        format_func=lambda k: TONE_LABELS[k],
-        key="bp_caption_tone",
-    )
 
 # -------------------------------------------------------
 # Load calendar data + route classification
@@ -189,54 +139,10 @@ all_media_ids = list({
 })
 media_info = fetch_media_info(all_media_ids)
 
-# -------------------------------------------------------
-# Route summary + overall progress
-# -------------------------------------------------------
-st.markdown("### Route Summary")
-_route_cols = st.columns(5)
-for i, (route, label) in enumerate(ROUTE_LABELS.items()):
-    count = len(route_groups.get(route, []))
-    color = ROUTE_COLORS[route]
-    _route_cols[i].markdown(f":{color}[**{label}**]  \n{count} slots")
-
-# Compute overall readiness
-total_slots = len(slots_with_media)
-_ready_count = 0
-for s in slots_with_media:
-    cid = s["id"]
-    route = s.get("target_format") or "feed"
-    if route == "story":
-        route = "feed"
-    if route == "reel":
-        route = "reel-kling"
-    if route == "feed":
-        # Feed slots are ready when they have captions
-        if cid in content_map:
-            _ready_count += 1
-    elif route == "carousel":
-        if cid in carousel_map:
-            _ready_count += 1
-    elif route in ROUTES_NEED_MUSIC:
-        if cid in composite_map:
-            _ready_count += 1
-    elif route == "reel-veo":
-        if any(v.get("status") == "accepted" for v in video_map.get(cid, [])):
-            _ready_count += 1
-
-st.progress(_ready_count / max(total_slots, 1),
-            text=f"**{_ready_count}/{total_slots}** slots production-ready")
 
 # -------------------------------------------------------
-# Helpers
+# Shared helpers
 # -------------------------------------------------------
-reel_slots = route_groups.get("reel-kling", []) + route_groups.get("reel-veo", [])
-reel_kling_slots = route_groups.get("reel-kling", [])
-reel_veo_slots = route_groups.get("reel-veo", [])
-music_slots = route_groups.get("reel-kling", []) + route_groups.get("reel-slideshow", [])
-reel_ids = [s["id"] for s in reel_slots]
-music_slot_ids = [s["id"] for s in music_slots]
-
-
 def _slot_label(slot):
     """Format a slot as a short label: 'Wed 12/03 S1 | chambre'."""
     pd = slot.get("post_date", "")
@@ -249,11 +155,7 @@ def _slot_label(slot):
             pd = f"{pd[8:10]}/{pd[5:7]}"
     si = slot.get("slot_index", 1)
     cat = slot.get("target_category") or "?"
-    route = slot.get("target_format") or "feed"
-    if route == "reel":
-        route = "reel-kling"
-    rlabel = ROUTE_LABELS.get(route, route)
-    return f"{pd} S{si} | {cat} | {rlabel}"
+    return f"{pd} S{si} | {cat}"
 
 
 def _slot_thumbnail(slot, width=100):
@@ -272,469 +174,593 @@ def _slot_thumbnail(slot, width=100):
     st.caption("no thumb")
 
 
-# -------------------------------------------------------
-# REEL PIPELINE
-# -------------------------------------------------------
-if reel_slots:
-    st.markdown("---")
-    st.markdown(f"### Reel Pipeline ({len(reel_slots)} reel slots)")
+def _render_scenario_step(slots, key_prefix):
+    """Render scenario generation + inline review for a list of reel slots.
+    Returns (accepted_count, needs_action)."""
+    slot_ids = [s["id"] for s in slots]
 
-    # --- Step 1: Scenarios ---
-    # Only count slots with active (non-rejected) scenarios as "having scenarios"
-    _sc_slots_with_active = [
-        cid for cid in reel_ids
+    # Settings row
+    c1, c2, c3 = st.columns(3)
+    scenario_count = c1.slider("Scenarios/slot", 2, 5, 3, key=f"{key_prefix}_sc_count")
+    scenario_include_image = c2.checkbox("Include image", value=True, key=f"{key_prefix}_sc_img")
+    scenario_model = c3.selectbox(
+        "Model", ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+        key=f"{key_prefix}_sc_model",
+    )
+
+    # Stats
+    sc_slots_with_active = [
+        cid for cid in slot_ids
         if any(s.get("status") != "rejected" for s in scenario_map.get(cid, []))
     ]
-    _sc_accepted = sum(
-        1 for cid in reel_ids
+    sc_accepted = sum(
+        1 for cid in slot_ids
         if any(s.get("status") == "accepted" for s in scenario_map.get(cid, []))
     )
-    _sc_need_review = sum(
-        1 for cid in reel_ids
+    sc_need_review = sum(
+        1 for cid in slot_ids
         if cid in scenario_map
         and not any(s.get("status") == "accepted" for s in scenario_map.get(cid, []))
         and any(s.get("status") == "draft" for s in scenario_map.get(cid, []))
     )
-    _sc_eligible = len(reel_slots) - len(_sc_slots_with_active)
+    sc_eligible = len(slots) - len(sc_slots_with_active)
 
-    # Determine auto-expand: expand the first step that needs action
-    _sc_needs_action = _sc_eligible > 0 or _sc_need_review > 0
-    _sc_icon = "green" if _sc_accepted == len(reel_slots) else ("orange" if len(_sc_slots_with) > 0 else "gray")
+    # Progress bar
+    st.progress(sc_accepted / max(len(slots), 1),
+                text=f"Scenarios: {sc_accepted}/{len(slots)} accepted")
 
-    with st.expander(
-        f":{_sc_icon}[Step 1: SCENARIOS] — {_sc_accepted}/{len(reel_slots)} slots ready",
-        expanded=_sc_needs_action,
-    ):
-        # Status summary
-        if _sc_accepted > 0:
-            st.markdown(f":green[{_sc_accepted} slot{'s' if _sc_accepted != 1 else ''}: scenario accepted]")
-        if _sc_need_review > 0:
-            st.markdown(f":orange[{_sc_need_review} slot{'s' if _sc_need_review != 1 else ''}: draft scenarios — REVIEW BELOW]")
-        if _sc_eligible > 0:
-            sc_est = estimate_scenario_cost(_sc_eligible, scenario_count, scenario_include_image, scenario_model)
-            st.markdown(f":gray[{_sc_eligible} slot{'s' if _sc_eligible != 1 else ''}: need scenarios]")
+    if sc_need_review > 0:
+        st.markdown(f":orange[{sc_need_review} slot{'s' if sc_need_review != 1 else ''} need review]")
+    if sc_eligible > 0:
+        sc_est = estimate_scenario_cost(sc_eligible, scenario_count, scenario_include_image, scenario_model)
+        if st.button(
+            f"Generate Scenarios ({sc_eligible})",
+            type="primary", key=f"{key_prefix}_run_sc",
+            help=f"~${sc_est['total']:.2f}",
+        ):
+            eligible = [s for s in slots if s["id"] not in sc_slots_with_active]
+            progress_bar = st.progress(0, text="Starting scenario generation...")
 
-        # Generate button
-        if _sc_eligible > 0:
-            if st.button(
-                f"Generate Scenarios ({_sc_eligible})",
-                type="primary", key="bp_run_scenarios",
-                help=f"{scenario_count} concepts x {_sc_eligible} slots ~ ${sc_est['total']:.2f}",
-            ):
-                eligible = [
-                    s for s in reel_slots
-                    if s["id"] not in _sc_slots_with_active
-                ]
-                progress_bar = st.progress(0, text="Starting scenario generation...")
+            def _cb(i, total, msg):
+                progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
 
-                def _sc_progress(i, total, msg):
-                    progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
-
-                with st.spinner(f"Generating scenarios for {len(eligible)} slots..."):
-                    result = batch_generate_scenarios(
-                        slots=eligible,
-                        count=scenario_count,
-                        model=scenario_model,
-                        include_image=scenario_include_image,
-                        progress_callback=_sc_progress,
-                    )
-                    st.session_state["bp_scenario_result"] = result
-
-                progress_bar.empty()
-                st.success(
-                    f"Scenarios: {result['success']} generated, {result['skipped']} skipped, "
-                    f"{result['failed']} failed | Cost: ${result['total_cost']:.4f}"
+            with st.spinner(f"Generating scenarios for {len(eligible)} slots..."):
+                result = batch_generate_scenarios(
+                    slots=eligible, count=scenario_count, model=scenario_model,
+                    include_image=scenario_include_image, progress_callback=_cb,
                 )
-                if result["errors"]:
-                    for err in result["errors"]:
-                        st.warning(err)
-                st.rerun()
+            progress_bar.empty()
+            st.success(
+                f"{result['success']} generated, {result['skipped']} skipped, "
+                f"{result['failed']} failed | ${result['total_cost']:.4f}"
+            )
+            if result["errors"]:
+                for err in result["errors"]:
+                    st.warning(err)
+            st.rerun()
 
-        # Inline review: grouped by slot
-        for slot in reel_slots:
-            cid = slot["id"]
-            sc_list = scenario_map.get(cid, [])
-            if not sc_list:
-                continue
-            has_accepted = any(s.get("status") == "accepted" for s in sc_list)
-            has_draft = any(s.get("status") == "draft" for s in sc_list)
+    # Inline scenario review
+    for slot in slots:
+        cid = slot["id"]
+        sc_list = scenario_map.get(cid, [])
+        if not sc_list:
+            continue
+        has_accepted = any(s.get("status") == "accepted" for s in sc_list)
+        has_draft = any(s.get("status") == "draft" for s in sc_list)
 
-            if has_accepted and not has_draft:
-                # Show compact accepted summary
-                accepted = [s for s in sc_list if s.get("status") == "accepted"][0]
-                st.markdown(f":green[{_slot_label(slot)}] — accepted: *{accepted.get('title', '')}*")
-                continue
+        if has_accepted and not has_draft:
+            accepted = [s for s in sc_list if s.get("status") == "accepted"][0]
+            st.markdown(f":green[{_slot_label(slot)}] — *{accepted.get('title', '')}*")
+            continue
 
-            # Show full review UI for this slot
-            st.markdown(f"**{_slot_label(slot)}**")
+        st.markdown(f"**{_slot_label(slot)}**")
+        _th_col, _v_col = st.columns([1, 4])
+        with _th_col:
+            _slot_thumbnail(slot, width=120)
+        with _v_col:
+            draft_sc = [s for s in sc_list if s.get("status") == "draft"]
+            accepted_sc = [s for s in sc_list if s.get("status") == "accepted"]
+            all_rev = accepted_sc + draft_sc
+            if all_rev:
+                vcols = st.columns(min(len(all_rev), 3))
+                for vi, sc in enumerate(all_rev[:3]):
+                    with vcols[vi]:
+                        mood = sc.get("mood", "?")
+                        title = sc.get("title", "Untitled")
+                        sc_status = sc.get("status", "draft")
+                        sc_color = STATUS_COLORS.get(sc_status, "gray")
+                        st.markdown(f":{sc_color}[**{mood.upper()}**]")
+                        st.markdown(f"*{title}*")
+                        if sc.get("description"):
+                            st.caption(sc["description"][:120])
+                        if sc.get("motion_prompt"):
+                            with st.popover("Motion prompt"):
+                                st.text(sc["motion_prompt"])
+                        if sc_status == "draft":
+                            if st.button("Accept", key=f"{key_prefix}_sc_acc_{sc['id']}",
+                                         type="primary", use_container_width=True):
+                                accept_scenario_reject_others(sc["id"], cid)
+                                st.rerun()
+                        elif sc_status == "accepted":
+                            st.markdown(":green[ACCEPTED]")
+        st.markdown("---")
 
-            # Show thumbnail once
-            _th_col, _variants_col = st.columns([1, 4])
-            with _th_col:
-                _slot_thumbnail(slot, width=120)
+    needs_action = sc_eligible > 0 or sc_need_review > 0
+    return sc_accepted, needs_action
 
-            with _variants_col:
-                # Side-by-side variant columns
-                draft_scenarios = [s for s in sc_list if s.get("status") == "draft"]
-                accepted_scenarios = [s for s in sc_list if s.get("status") == "accepted"]
-                all_reviewable = accepted_scenarios + draft_scenarios
 
-                if all_reviewable:
-                    variant_cols = st.columns(min(len(all_reviewable), 3))
-                    for vi, sc in enumerate(all_reviewable[:3]):
-                        with variant_cols[vi]:
-                            mood = sc.get("mood", "?")
-                            title = sc.get("title", "Untitled")
-                            sc_status = sc.get("status", "draft")
-                            sc_color = STATUS_COLORS.get(sc_status, "gray")
+def _render_video_step(slots, key_prefix, default_duration, duration_options, aspect_default="9:16"):
+    """Render video generation + inline review. Returns (accepted_count, needs_action)."""
+    slot_ids = [s["id"] for s in slots]
 
-                            st.markdown(f":{sc_color}[**{mood.upper()}**]")
-                            st.markdown(f"*{title}*")
-                            if sc.get("description"):
-                                st.caption(sc["description"][:120])
-                            if sc.get("motion_prompt"):
-                                with st.popover("Motion prompt"):
-                                    st.text(sc["motion_prompt"])
+    # Settings row
+    c1, c2 = st.columns(2)
+    vid_duration = c1.selectbox("Duration (s)", duration_options,
+                                index=duration_options.index(default_duration) if default_duration in duration_options else 0,
+                                key=f"{key_prefix}_vid_dur")
+    vid_aspect = c2.selectbox("Aspect", ["9:16", "16:9", "1:1"], key=f"{key_prefix}_vid_ar")
 
-                            # Accept-one pattern
-                            if sc_status == "draft":
-                                if st.button(
-                                    "Accept",
-                                    key=f"pp_sc_acc_{sc['id']}",
-                                    type="primary",
-                                    use_container_width=True,
-                                ):
-                                    accept_scenario_reject_others(sc["id"], cid)
-                                    st.rerun()
-                            elif sc_status == "accepted":
-                                st.markdown(":green[ACCEPTED]")
-                            elif sc_status == "rejected":
-                                st.markdown(":red[rejected]")
-
-            st.markdown("---")
-
-    # --- Step 2: Videos ---
-    # Only count slots with active (non-rejected) videos
-    _vid_active_slots = [
-        cid for cid in reel_ids
+    vid_active_slots = [
+        cid for cid in slot_ids
         if any(v.get("status") != "rejected" for v in video_map.get(cid, []))
     ]
-    _vid_total = len(_vid_active_slots)
-    _vid_accepted = sum(
-        1 for cid in reel_ids
+    vid_accepted = sum(
+        1 for cid in slot_ids
         if any(v.get("status") == "accepted" for v in video_map.get(cid, []))
     )
-    _vid_need_review = sum(
-        1 for cid in reel_ids
+    vid_need_review = sum(
+        1 for cid in slot_ids
         if cid in video_map
         and not any(v.get("status") == "accepted" for v in video_map.get(cid, []))
         and any(v.get("status") == "completed" for v in video_map.get(cid, []))
     )
-    _vid_eligible = max(0, _sc_accepted - _vid_total)
-    _vid_blocked = len(reel_slots) - _sc_accepted
-    _vid_icon = "green" if _vid_accepted == len(reel_slots) else ("orange" if _vid_total > 0 else "gray")
-    _vid_needs_action = (_vid_eligible > 0 or _vid_need_review > 0) and not _sc_needs_action
+    # Need accepted scenario to be eligible for video
+    sc_accepted_ids = {
+        cid for cid in slot_ids
+        if any(s.get("status") == "accepted" for s in scenario_map.get(cid, []))
+    }
+    vid_eligible = sum(1 for cid in sc_accepted_ids if cid not in vid_active_slots)
+    vid_blocked = len(slots) - len(sc_accepted_ids)
 
-    with st.expander(
-        f":{_vid_icon}[Step 2: VIDEOS] — {_vid_accepted}/{len(reel_slots)} slots ready",
-        expanded=_vid_needs_action,
-    ):
-        if _vid_accepted > 0:
-            st.markdown(f":green[{_vid_accepted} slot{'s' if _vid_accepted != 1 else ''}: video accepted]")
-        if _vid_need_review > 0:
-            st.markdown(f":orange[{_vid_need_review} slot{'s' if _vid_need_review != 1 else ''}: video needs review]")
-        if _vid_blocked > 0:
-            st.markdown(f":gray[{_vid_blocked} slot{'s' if _vid_blocked != 1 else ''}: need accepted scenario first]")
-        if _vid_eligible > 0:
-            _kling_elig = sum(
-                1 for s in reel_kling_slots
-                if any(sc.get("status") == "accepted" for sc in scenario_map.get(s["id"], []))
-                and s["id"] not in _vid_active_slots
-            )
-            _veo_elig = max(0, _vid_eligible - _kling_elig)
-            vid_est = (
-                estimate_video_cost(max(_kling_elig, 0), "kling-v2.1", video_duration_kling)["total"]
-                + estimate_video_cost(max(_veo_elig, 0), "veo-3.1-fast", video_duration_veo)["total"]
-            )
+    st.progress(vid_accepted / max(len(slots), 1),
+                text=f"Videos: {vid_accepted}/{len(slots)} accepted")
 
-        # Generate button
-        if _vid_eligible > 0:
-            if st.button(
-                f"Generate Videos ({_vid_eligible})",
-                type="primary", key="bp_run_videos",
-                help=f"~${vid_est:.2f}",
-            ):
-                eligible = [
-                    s for s in reel_slots
-                    if s["id"] not in _vid_active_slots
-                    and any(sc.get("status") == "accepted" for sc in scenario_map.get(s["id"], []))
-                ]
-                progress_bar = st.progress(0, text="Starting video generation...")
+    if vid_need_review > 0:
+        st.markdown(f":orange[{vid_need_review} need review]")
+    if vid_blocked > 0:
+        st.caption(f"{vid_blocked} waiting on scenario")
 
-                def _vid_progress(i, total, msg):
-                    progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
-
-                with st.spinner(f"Generating videos for {len(eligible)} slots..."):
-                    result = batch_generate_videos(
-                        slots=eligible,
-                        duration=video_duration_kling,
-                        aspect_ratio=video_aspect,
-                        progress_callback=_vid_progress,
-                    )
-                    st.session_state["bp_video_result"] = result
-
-                progress_bar.empty()
-                st.success(
-                    f"Videos: {result['success']} generated, {result['skipped']} skipped, "
-                    f"{result['failed']} failed | Cost: ${result['total_cost']:.2f}"
-                )
-                if result["errors"]:
-                    for err in result["errors"]:
-                        st.warning(err)
-                st.rerun()
-        elif _sc_accepted == 0:
-            st.info("Accept scenarios first")
-
-        # Inline video review
-        for slot in reel_slots:
-            cid = slot["id"]
-            vid_list = video_map.get(cid, [])
-            if not vid_list:
-                continue
-            has_accepted = any(v.get("status") == "accepted" for v in vid_list)
-
-            if has_accepted:
-                accepted_v = [v for v in vid_list if v.get("status") == "accepted"][0]
-                st.markdown(f":green[{_slot_label(slot)}] — video accepted")
-                continue
-
-            st.markdown(f"**{_slot_label(slot)}**")
-            for vj in vid_list:
-                if vj.get("status") not in ("completed", "draft"):
-                    continue
-                _vc1, _vc2 = st.columns([2, 1])
-                with _vc1:
-                    if vj.get("result_url"):
-                        _vid_drive = vj.get("drive_file_id")
-                        if _vid_drive:
-                            try:
-                                _vbytes = download_file_bytes(_vid_drive)
-                                st.video(_vbytes)
-                            except Exception:
-                                st.video(vj["result_url"])
-                        else:
-                            st.video(vj["result_url"])
-                with _vc2:
-                    params = vj.get("params", {})
-                    if isinstance(params, str):
-                        params = json.loads(params)
-                    if params.get("model"):
-                        st.caption(params["model"])
-                    if vj.get("cost_usd"):
-                        st.caption(f"${vj['cost_usd']:.2f}")
-                    render_inline_review(vj["id"], "video", vj.get("status", "completed"),
-                                         f"pp_vid_{cid}")
-            st.markdown("---")
-
-    # --- Step 3: Music + Composite ---
-    if music_slots:
-        # Only count active (non-rejected) music/composites
-        _mus_active_slots = [
-            cid for cid in music_slot_ids
-            if any(m.get("status") != "rejected" for m in music_map.get(cid, []))
-        ]
-        _mus_total = len(_mus_active_slots)
-        _mus_accepted = sum(
-            1 for cid in music_slot_ids
-            if any(m.get("status") == "accepted" for m in music_map.get(cid, []))
-        )
-        _comp_active_slots = [
-            cid for cid in music_slot_ids
-            if any(c.get("status") != "rejected" for c in composite_map.get(cid, []))
-        ]
-        _comp_total = len(_comp_active_slots)
-        # Ready for music: accepted video (kling) or slideshow done
-        _kling_vid_accepted = sum(
-            1 for s in reel_kling_slots
-            if any(v.get("status") == "accepted" for v in video_map.get(s["id"], []))
-        )
-        _ss_done = sum(1 for cid in [s["id"] for s in route_groups.get("reel-slideshow", [])]
-                       if cid in slideshow_map)
-        _music_ready = _kling_vid_accepted + _ss_done
-        _mus_eligible = max(0, _music_ready - _mus_total)
-        _comp_eligible = max(0, min(_music_ready, _mus_accepted) - _comp_total)
-        _mus_icon = "green" if _comp_total == len(music_slots) else ("orange" if _mus_total > 0 else "gray")
-        _mus_needs_action = (_mus_eligible > 0 or _comp_eligible > 0) and not _vid_needs_action and not _sc_needs_action
-
-        with st.expander(
-            f":{_mus_icon}[Step 3: MUSIC + COMPOSITE] — {_comp_total}/{len(music_slots)} slots complete",
-            expanded=_mus_needs_action,
+    if vid_eligible > 0:
+        vid_est = estimate_video_cost(vid_eligible, slots[0].get("_video_model", "kling-v2.1"), vid_duration)
+        if st.button(
+            f"Generate Videos ({vid_eligible})",
+            type="primary", key=f"{key_prefix}_run_vid",
+            help=f"~${vid_est['total']:.2f}",
         ):
-            if _comp_total > 0:
-                st.markdown(f":green[{_comp_total} slot{'s' if _comp_total != 1 else ''}: composite done]")
-            if _mus_accepted > 0 and _comp_total < _mus_accepted:
-                st.markdown(f":orange[{_mus_accepted - _comp_total} slot{'s' if (_mus_accepted - _comp_total) != 1 else ''}: music accepted, needs composite]")
-            _mus_blocked = len(music_slots) - _music_ready
-            if _mus_blocked > 0:
-                st.markdown(f":gray[{_mus_blocked} slot{'s' if _mus_blocked != 1 else ''}: need accepted video first]")
+            eligible = [
+                s for s in slots
+                if s["id"] in sc_accepted_ids and s["id"] not in vid_active_slots
+            ]
+            progress_bar = st.progress(0, text="Starting video generation...")
 
-            # Music generate button
-            if _mus_eligible > 0:
-                mus_est = estimate_music_cost(max(_mus_eligible, 0), music_duration)
-                if st.button(
-                    f"Generate Music ({_mus_eligible})",
-                    type="primary", key="bp_run_music",
-                    help=f"~${mus_est['total']:.2f}",
-                ):
-                    eligible = [
-                        s for s in music_slots
-                        if s["id"] not in _mus_active_slots
-                        and (
-                            any(v.get("status") == "accepted" for v in video_map.get(s["id"], []))
-                            or s["id"] in slideshow_map
-                        )
-                    ]
-                    progress_bar = st.progress(0, text="Starting music generation...")
+            def _cb(i, total, msg):
+                progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
 
-                    def _mus_progress(i, total, msg):
-                        progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
+            with st.spinner(f"Generating videos for {len(eligible)} slots..."):
+                result = batch_generate_videos(
+                    slots=eligible, duration=vid_duration, aspect_ratio=vid_aspect,
+                    progress_callback=_cb,
+                )
+            progress_bar.empty()
+            st.success(
+                f"{result['success']} generated, {result['skipped']} skipped, "
+                f"{result['failed']} failed | ${result['total_cost']:.2f}"
+            )
+            if result["errors"]:
+                for err in result["errors"]:
+                    st.warning(err)
+            st.rerun()
+    elif len(sc_accepted_ids) == 0:
+        st.info("Accept scenarios first")
 
-                    with st.spinner(f"Generating music for {len(eligible)} slots..."):
-                        result = batch_generate_music(
-                            slots=eligible,
-                            music_duration=music_duration,
-                            progress_callback=_mus_progress,
-                        )
-                        st.session_state["bp_music_result"] = result
+    # Inline video review
+    for slot in slots:
+        cid = slot["id"]
+        vid_list = video_map.get(cid, [])
+        if not vid_list:
+            continue
+        has_accepted = any(v.get("status") == "accepted" for v in vid_list)
+        if has_accepted:
+            st.markdown(f":green[{_slot_label(slot)}] — video accepted")
+            continue
 
-                    progress_bar.empty()
-                    st.success(
-                        f"Music: {result['success']} generated, {result['skipped']} skipped, "
-                        f"{result['failed']} failed | Cost: ${result['total_cost']:.4f}"
+        st.markdown(f"**{_slot_label(slot)}**")
+        for vj in vid_list:
+            if vj.get("status") not in ("completed", "draft"):
+                continue
+            _vc1, _vc2 = st.columns([2, 1])
+            with _vc1:
+                _vid_drive = vj.get("drive_file_id")
+                if _vid_drive:
+                    try:
+                        _vbytes = download_file_bytes(_vid_drive)
+                        st.video(_vbytes)
+                    except Exception:
+                        if vj.get("result_url"):
+                            st.video(vj["result_url"])
+                elif vj.get("result_url"):
+                    st.video(vj["result_url"])
+            with _vc2:
+                params = vj.get("params", {})
+                if isinstance(params, str):
+                    params = json.loads(params)
+                if params.get("model"):
+                    st.caption(params["model"])
+                if vj.get("cost_usd"):
+                    st.caption(f"${vj['cost_usd']:.2f}")
+                render_inline_review(
+                    vj["id"], "video", vj.get("status", "completed"),
+                    f"{key_prefix}_vid_{cid}",
+                    calendar_id=cid, accept_creative_status="video_accepted",
+                )
+        st.markdown("---")
+
+    needs_action = vid_eligible > 0 or vid_need_review > 0
+    return vid_accepted, needs_action
+
+
+def _render_music_step(slots, key_prefix, default_duration=10):
+    """Render music generation + inline review. Returns (accepted_count, needs_action)."""
+    slot_ids = [s["id"] for s in slots]
+
+    c1, _ = st.columns(2)
+    mus_duration = c1.slider("Music duration (s)", 5, 30, default_duration, key=f"{key_prefix}_mus_dur")
+
+    mus_active_slots = [
+        cid for cid in slot_ids
+        if any(m.get("status") != "rejected" for m in music_map.get(cid, []))
+    ]
+    mus_accepted = sum(
+        1 for cid in slot_ids
+        if any(m.get("status") == "accepted" for m in music_map.get(cid, []))
+    )
+    # Ready for music: accepted video or slideshow done
+    music_ready_ids = set()
+    for s in slots:
+        cid = s["id"]
+        if any(v.get("status") == "accepted" for v in video_map.get(cid, [])):
+            music_ready_ids.add(cid)
+        if cid in slideshow_map:
+            music_ready_ids.add(cid)
+    mus_eligible = sum(1 for cid in music_ready_ids if cid not in mus_active_slots)
+
+    st.progress(mus_accepted / max(len(slots), 1),
+                text=f"Music: {mus_accepted}/{len(slots)} accepted")
+
+    if mus_eligible > 0:
+        mus_est = estimate_music_cost(mus_eligible, mus_duration)
+        if st.button(
+            f"Generate Music ({mus_eligible})",
+            type="primary", key=f"{key_prefix}_run_mus",
+            help=f"~${mus_est['total']:.2f}",
+        ):
+            eligible = [s for s in slots if s["id"] in music_ready_ids and s["id"] not in mus_active_slots]
+            progress_bar = st.progress(0, text="Starting music generation...")
+
+            def _cb(i, total, msg):
+                progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
+
+            with st.spinner(f"Generating music for {len(eligible)} slots..."):
+                result = batch_generate_music(
+                    slots=eligible, music_duration=mus_duration, progress_callback=_cb,
+                )
+            progress_bar.empty()
+            st.success(
+                f"{result['success']} generated, {result['skipped']} skipped, "
+                f"{result['failed']} failed | ${result['total_cost']:.4f}"
+            )
+            if result["errors"]:
+                for err in result["errors"]:
+                    st.warning(err)
+            st.rerun()
+    elif len(music_ready_ids) == 0:
+        st.info("Accept videos first")
+
+    # Inline music review
+    for slot in slots:
+        cid = slot["id"]
+        mus_list = music_map.get(cid, [])
+        if not mus_list:
+            continue
+        has_accepted = any(m.get("status") == "accepted" for m in mus_list)
+        if has_accepted:
+            st.markdown(f":green[{_slot_label(slot)}] — music accepted")
+            continue
+
+        st.markdown(f"**{_slot_label(slot)}**")
+        for mu in mus_list:
+            if mu.get("status") not in ("draft",):
+                continue
+            _mc1, _mc2 = st.columns([2, 1])
+            with _mc1:
+                _played = False
+                if mu.get("drive_file_id"):
+                    try:
+                        _mu_bytes = download_file_bytes(mu["drive_file_id"])
+                        st.audio(_mu_bytes, format="audio/wav")
+                        _played = True
+                    except Exception:
+                        pass
+                if not _played and mu.get("audio_url") and "drive.google.com" not in mu.get("audio_url", ""):
+                    st.audio(mu["audio_url"])
+            with _mc2:
+                render_inline_review(
+                    mu["id"], "music", mu.get("status", "draft"),
+                    f"{key_prefix}_mus_{cid}",
+                    calendar_id=cid, accept_creative_status="music_accepted",
+                )
+        st.markdown("---")
+
+    needs_action = mus_eligible > 0
+    return mus_accepted, needs_action
+
+
+def _render_composite_step(slots, key_prefix, default_volume=0.3):
+    """Render composite generation. Returns (done_count, needs_action)."""
+    slot_ids = [s["id"] for s in slots]
+
+    c1, _ = st.columns(2)
+    comp_volume = c1.slider("Music volume", 0.1, 1.0, default_volume, step=0.1, key=f"{key_prefix}_comp_vol")
+
+    comp_active_slots = [
+        cid for cid in slot_ids
+        if any(c.get("status") != "rejected" for c in composite_map.get(cid, []))
+    ]
+    comp_done = len(comp_active_slots)
+
+    # Ready for composite: accepted video/slideshow AND accepted music
+    comp_ready = 0
+    for s in slots:
+        cid = s["id"]
+        has_video = (
+            any(v.get("status") == "accepted" for v in video_map.get(cid, []))
+            or cid in slideshow_map
+        )
+        has_music = any(m.get("status") == "accepted" for m in music_map.get(cid, []))
+        if has_video and has_music:
+            comp_ready += 1
+    comp_eligible = max(0, comp_ready - comp_done)
+
+    st.progress(comp_done / max(len(slots), 1),
+                text=f"Composites: {comp_done}/{len(slots)} done")
+
+    if comp_eligible > 0:
+        if st.button(
+            f"Run Composite ({comp_eligible})",
+            type="primary", key=f"{key_prefix}_run_comp",
+            help="Free (FFmpeg)",
+        ):
+            eligible = [
+                s for s in slots
+                if s["id"] not in comp_active_slots
+                and (any(v.get("status") == "accepted" for v in video_map.get(s["id"], []))
+                     or s["id"] in slideshow_map)
+                and any(m.get("status") == "accepted" for m in music_map.get(s["id"], []))
+            ]
+            progress_bar = st.progress(0, text="Starting composite...")
+
+            def _cb(i, total, msg):
+                progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
+
+            with st.spinner(f"Compositing {len(eligible)} slots..."):
+                result = batch_composite(slots=eligible, volume=comp_volume, progress_callback=_cb)
+            progress_bar.empty()
+            st.success(
+                f"{result['success']} generated, {result['skipped']} skipped, "
+                f"{result['failed']} failed"
+            )
+            if result["errors"]:
+                for err in result["errors"]:
+                    st.warning(err)
+            st.rerun()
+
+    return comp_done, comp_eligible > 0
+
+
+def _render_caption_step(slots, key_prefix, exclude_carousel=True):
+    """Render caption generation for eligible slots. Returns done_count."""
+    # Determine caption-ready slots
+    caption_ready = set()
+    for s in slots:
+        sid = s["id"]
+        route = s.get("target_format") or "feed"
+        if route in ("story", ""):
+            route = "feed"
+        if route == "reel":
+            route = "reel-kling"
+        if exclude_carousel and route == "carousel":
+            continue
+        if route == "feed":
+            caption_ready.add(sid)
+        elif route in ("reel-kling", "reel-slideshow"):
+            if any(c.get("status") != "rejected" for c in composite_map.get(sid, [])):
+                caption_ready.add(sid)
+        elif route == "reel-veo":
+            if any(v.get("status") == "accepted" for v in video_map.get(sid, [])):
+                caption_ready.add(sid)
+
+    cap_have = sum(1 for cid in [s["id"] for s in slots] if cid in content_map)
+    cap_need = sum(1 for cid in caption_ready if cid not in content_map)
+
+    # Settings row
+    c1, c2, c3 = st.columns(3)
+    cap_model = c1.selectbox("Caption Model", ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+                             key=f"{key_prefix}_cap_model")
+    cap_img = c2.checkbox("Include image", value=False, key=f"{key_prefix}_cap_img")
+    cap_tone = c3.selectbox("Tone", list(TONE_LABELS.keys()),
+                            format_func=lambda k: TONE_LABELS[k],
+                            key=f"{key_prefix}_cap_tone")
+
+    st.progress(cap_have / max(len(slots), 1),
+                text=f"Captions: {cap_have}/{len(slots)} done")
+
+    if cap_need > 0:
+        entries_to_caption = [s for s in slots if s["id"] in caption_ready and s["id"] not in content_map]
+        cap_est = estimate_batch_cost(entries_to_caption, cap_model, cap_img)
+        if st.button(
+            f"Generate Captions ({cap_need})",
+            type="primary", key=f"{key_prefix}_run_cap",
+            help=f"~${cap_est['estimated_cost_usd']:.2f}",
+        ):
+            progress_bar = st.progress(0, text="Generating captions...")
+            success_count = 0
+            total_cost = 0.0
+            total = len(entries_to_caption)
+
+            for i, entry in enumerate(entries_to_caption):
+                try:
+                    image_b64 = None
+                    if cap_img:
+                        mid = entry.get("manual_media_id") or entry.get("media_id")
+                        mi = media_info.get(mid, {}) if mid else {}
+                        dfid = mi.get("drive_file_id")
+                        if dfid:
+                            from src.utils import encode_image_bytes
+                            raw = download_file_bytes(dfid)
+                            image_b64 = encode_image_bytes(raw)
+
+                    result = generate_for_slot(
+                        entry=entry, model=cap_model, include_image=cap_img,
+                        image_base64=image_b64, tone=cap_tone,
                     )
-                    if result["errors"]:
-                        for err in result["errors"]:
-                            st.warning(err)
-                    st.rerun()
-            elif _music_ready == 0:
-                st.info("Accept videos first")
+                    if result:
+                        success_count += 1
+                        total_cost += result.get("cost_usd", 0)
+                        update_calendar_creative_status(entry["id"], "captions_done")
+                except Exception as e:
+                    st.warning(f"Failed for {entry['post_date']} S{entry.get('slot_index', 1)}: {e}")
+                progress_bar.progress((i + 1) / total, text=f"Generated {i + 1}/{total}...")
 
-            # Inline music review
-            for slot in music_slots:
-                cid = slot["id"]
-                mus_list = music_map.get(cid, [])
-                if not mus_list:
-                    continue
-                has_accepted = any(m.get("status") == "accepted" for m in mus_list)
-                if has_accepted:
-                    st.markdown(f":green[{_slot_label(slot)}] — music accepted")
-                    continue
+            progress_bar.empty()
+            st.success(f"Captions: {success_count}/{total} (${total_cost:.4f})")
+            st.rerun()
+    elif cap_have > 0 and cap_need == 0:
+        st.success("All eligible slots have captions!")
 
-                st.markdown(f"**{_slot_label(slot)}**")
-                for mu in mus_list:
-                    if mu.get("status") not in ("draft",):
-                        continue
-                    _mc1, _mc2 = st.columns([2, 1])
-                    with _mc1:
-                        _mu_played = False
-                        if mu.get("drive_file_id"):
-                            try:
-                                _mu_bytes = download_file_bytes(mu["drive_file_id"])
-                                st.audio(_mu_bytes, format="audio/wav")
-                                _mu_played = True
-                            except Exception:
-                                pass
-                        if not _mu_played and mu.get("audio_url") and "drive.google.com" not in mu.get("audio_url", ""):
-                            st.audio(mu["audio_url"])
-                    with _mc2:
-                        render_inline_review(mu["id"], "music", mu.get("status", "draft"),
-                                             f"pp_mus_{cid}")
-                st.markdown("---")
+    return cap_have
 
-            # Composite button
-            if _comp_eligible > 0:
-                st.divider()
-                if st.button(
-                    f"Run Composite ({_comp_eligible})",
-                    type="primary", key="bp_run_composite",
-                    help="Free (FFmpeg)",
-                ):
-                    eligible = [
-                        s for s in music_slots
-                        if s["id"] not in _comp_active_slots
-                        and (
-                            any(v.get("status") == "accepted" for v in video_map.get(s["id"], []))
-                            or s["id"] in slideshow_map
-                        )
-                        and any(m.get("status") == "accepted" for m in music_map.get(s["id"], []))
-                    ]
-                    progress_bar = st.progress(0, text="Starting composite generation...")
-
-                    def _comp_progress(i, total, msg):
-                        progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
-
-                    with st.spinner(f"Compositing {len(eligible)} slots..."):
-                        result = batch_composite(
-                            slots=eligible,
-                            volume=composite_volume,
-                            progress_callback=_comp_progress,
-                        )
-                        st.session_state["bp_composite_result"] = result
-
-                    progress_bar.empty()
-                    st.success(
-                        f"Composites: {result['success']} generated, {result['skipped']} skipped, "
-                        f"{result['failed']} failed"
-                    )
-                    if result["errors"]:
-                        for err in result["errors"]:
-                            st.warning(err)
-                    st.rerun()
 
 # -------------------------------------------------------
-# CAROUSEL PIPELINE
+# Route summary
 # -------------------------------------------------------
-carousel_slots_list = route_groups.get("carousel", [])
-if carousel_slots_list:
-    st.markdown("---")
-    carousel_slot_ids = [s["id"] for s in carousel_slots_list]
-    _car_total = sum(1 for cid in carousel_slot_ids if cid in carousel_map)
-    _car_eligible = len(carousel_slots_list) - _car_total
-    _car_icon = "green" if _car_total == len(carousel_slots_list) else ("orange" if _car_total > 0 else "gray")
+st.markdown("### Route Summary")
+_route_cols = st.columns(5)
+for i, (route, label) in enumerate(ROUTE_LABELS.items()):
+    count = len(route_groups.get(route, []))
+    color = ROUTE_COLORS[route]
+    _route_cols[i].markdown(f":{color}[**{label}**]  \n{count} slots")
 
-    st.markdown(f"### Carousel Pipeline ({len(carousel_slots_list)} slots)")
-    with st.expander(
-        f":{_car_icon}[Step 1: CAROUSELS] — {_car_total}/{len(carousel_slots_list)} done",
-        expanded=_car_eligible > 0,
-    ):
-        if _car_total > 0:
-            st.markdown(f":green[{_car_total} carousel{'s' if _car_total != 1 else ''} generated]")
+# Overall readiness
+total_slots = len(slots_with_media)
+_ready_count = 0
+for s in slots_with_media:
+    cid = s["id"]
+    route = s.get("target_format") or "feed"
+    if route == "story":
+        route = "feed"
+    if route == "reel":
+        route = "reel-kling"
+    if route == "feed":
+        if cid in content_map:
+            _ready_count += 1
+    elif route == "carousel":
+        if cid in carousel_map and any(c.get("status") == "accepted" for c in carousel_map.get(cid, [])):
+            _ready_count += 1
+    elif route in ROUTES_NEED_MUSIC:
+        if cid in composite_map:
+            _ready_count += 1
+    elif route == "reel-veo":
+        if any(v.get("status") == "accepted" for v in video_map.get(cid, [])):
+            _ready_count += 1
+
+st.progress(_ready_count / max(total_slots, 1),
+            text=f"**{_ready_count}/{total_slots}** slots production-ready")
+
+
+# -------------------------------------------------------
+# Route Tabs
+# -------------------------------------------------------
+tab_labels = []
+for route, label in ROUTE_LABELS.items():
+    count = len(route_groups.get(route, []))
+    tab_labels.append(f"{label} ({count})")
+
+tabs = st.tabs(tab_labels)
+
+# -------------------------------------------------------
+# TAB: Image Posts
+# -------------------------------------------------------
+with tabs[0]:
+    feed_slots = route_groups.get("feed", [])
+    if not feed_slots:
+        st.info("No image post slots in this date range.")
+    else:
+        _render_caption_step(feed_slots, "feed", exclude_carousel=False)
+
+# -------------------------------------------------------
+# TAB: Carousel
+# -------------------------------------------------------
+with tabs[1]:
+    carousel_slots_list = route_groups.get("carousel", [])
+    if not carousel_slots_list:
+        st.info("No carousel slots in this date range.")
+    else:
+        # Settings row
+        _cc1, _cc2 = st.columns(2)
+        carousel_slides = _cc1.slider("Images per carousel", 3, 10, 5, key="car_slides")
+        carousel_model = _cc2.selectbox("Model", ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+                                        key="car_model")
+
+        carousel_slot_ids = [s["id"] for s in carousel_slots_list]
+        _car_active = sum(
+            1 for cid in carousel_slot_ids
+            if cid in carousel_map and any(c.get("status") != "rejected" for c in carousel_map.get(cid, []))
+        )
+        _car_accepted = sum(
+            1 for cid in carousel_slot_ids
+            if cid in carousel_map and any(c.get("status") == "accepted" for c in carousel_map.get(cid, []))
+        )
+        _car_eligible = len(carousel_slots_list) - _car_active
+
+        st.progress(_car_accepted / max(len(carousel_slots_list), 1),
+                    text=f"Carousels: {_car_accepted}/{len(carousel_slots_list)} accepted")
+
         if _car_eligible > 0:
-            car_est = estimate_carousel_cost(_car_eligible, scenario_model)
+            car_est = estimate_carousel_cost(_car_eligible, carousel_model)
             if st.button(
                 f"Generate Carousels ({_car_eligible})",
-                type="primary", key="bp_run_carousels",
+                type="primary", key="car_run",
                 help=f"~${car_est['total']:.2f}",
             ):
-                eligible = [s for s in carousel_slots_list if s["id"] not in carousel_map]
+                eligible = [
+                    s for s in carousel_slots_list
+                    if s["id"] not in carousel_map
+                    or not any(c.get("status") != "rejected" for c in carousel_map.get(s["id"], []))
+                ]
                 progress_bar = st.progress(0, text="Starting carousel generation...")
 
-                def _car_progress(i, total, msg):
+                def _car_cb(i, total, msg):
                     progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
 
                 with st.spinner(f"Generating carousels for {len(eligible)} slots..."):
                     result = batch_generate_carousels(
-                        slots=eligible,
-                        model=scenario_model,
-                        slide_count=carousel_slides,
-                        progress_callback=_car_progress,
+                        slots=eligible, model=carousel_model, slide_count=carousel_slides,
+                        progress_callback=_car_cb,
                     )
-                    st.session_state["bp_carousel_result"] = result
-
                 progress_bar.empty()
                 st.success(
-                    f"Carousels: {result['success']} generated, {result['skipped']} skipped, "
-                    f"{result['failed']} failed | Cost: ${result['total_cost']:.4f}"
+                    f"{result['success']} generated, {result['skipped']} skipped, "
+                    f"{result['failed']} failed | ${result['total_cost']:.4f}"
                 )
                 if result["errors"]:
                     for err in result["errors"]:
@@ -760,7 +786,6 @@ if carousel_slots_list:
                     with _thumb_cols[ti]:
                         _tm_dfid = media_info.get(tmid, {}).get("drive_file_id")
                         if not _tm_dfid:
-                            # Need to fetch this media's info
                             _extra = fetch_media_info([tmid])
                             _tm_dfid = _extra.get(tmid, {}).get("drive_file_id")
                         if _tm_dfid:
@@ -774,167 +799,128 @@ if carousel_slots_list:
             if car.get("caption_es"):
                 st.caption(car["caption_es"][:150] + ("..." if len(car.get("caption_es", "")) > 150 else ""))
 
-            render_inline_review(car["id"], "carousel", car_status, f"pp_car_{cid}")
+            render_inline_review(
+                car["id"], "carousel", car_status, f"car_{cid}",
+                calendar_id=cid, accept_creative_status="carousel_accepted",
+            )
             st.markdown("---")
 
+# -------------------------------------------------------
+# TAB: Reel (Kling)
+# -------------------------------------------------------
+with tabs[2]:
+    kling_slots = route_groups.get("reel-kling", [])
+    if not kling_slots:
+        st.info("No Kling reel slots in this date range.")
+    else:
+        # Step 1: Scenarios
+        with st.expander("Step 1: Scenarios", expanded=True):
+            kling_sc_accepted, kling_sc_action = _render_scenario_step(kling_slots, "kling")
+
+        # Step 2: Videos
+        with st.expander(f"Step 2: Videos — {kling_sc_accepted} scenarios ready", expanded=not kling_sc_action):
+            kling_vid_accepted, kling_vid_action = _render_video_step(
+                kling_slots, "kling", default_duration=5, duration_options=[5, 10],
+            )
+
+        # Step 3: Music
+        with st.expander(f"Step 3: Music — {kling_vid_accepted} videos ready",
+                         expanded=not kling_sc_action and not kling_vid_action):
+            kling_mus_accepted, kling_mus_action = _render_music_step(kling_slots, "kling")
+
+        # Step 4: Composite
+        with st.expander("Step 4: Composite",
+                         expanded=not kling_sc_action and not kling_vid_action and not kling_mus_action):
+            kling_comp_done, kling_comp_action = _render_composite_step(kling_slots, "kling")
+
+        # Step 5: Captions
+        with st.expander("Step 5: Captions", expanded=False):
+            _render_caption_step(kling_slots, "kling_cap")
 
 # -------------------------------------------------------
-# SLIDESHOW PIPELINE
+# TAB: Reel (Veo)
 # -------------------------------------------------------
-slideshow_slots_list = route_groups.get("reel-slideshow", [])
-if slideshow_slots_list:
-    st.markdown("---")
-    ss_slot_ids = [s["id"] for s in slideshow_slots_list]
-    _ss_total = sum(1 for cid in ss_slot_ids if cid in slideshow_map)
-    _ss_eligible = len(slideshow_slots_list) - _ss_total
-    _ss_icon = "green" if _ss_total == len(slideshow_slots_list) else ("orange" if _ss_total > 0 else "gray")
+with tabs[3]:
+    veo_slots = route_groups.get("reel-veo", [])
+    if not veo_slots:
+        st.info("No Veo reel slots in this date range.")
+    else:
+        # Step 1: Scenarios
+        with st.expander("Step 1: Scenarios", expanded=True):
+            veo_sc_accepted, veo_sc_action = _render_scenario_step(veo_slots, "veo")
 
-    st.markdown(f"### Slideshow Pipeline ({len(slideshow_slots_list)} slots)")
-    with st.expander(
-        f":{_ss_icon}[Step 1: SLIDESHOWS] — {_ss_total}/{len(slideshow_slots_list)} done",
-        expanded=_ss_eligible > 0,
-    ):
-        if _ss_total > 0:
-            st.markdown(f":green[{_ss_total} slideshow{'s' if _ss_total != 1 else ''} generated]")
-        if _ss_eligible > 0:
-            if st.button(
-                f"Generate Slideshows ({_ss_eligible})",
-                type="primary", key="bp_run_slideshows",
-                help="Free (FFmpeg)",
-            ):
-                eligible = [s for s in slideshow_slots_list if s["id"] not in slideshow_map]
-                progress_bar = st.progress(0, text="Starting slideshow generation...")
+        # Step 2: Videos (Veo has native audio — no music step)
+        with st.expander(f"Step 2: Videos — {veo_sc_accepted} scenarios ready", expanded=not veo_sc_action):
+            veo_vid_accepted, veo_vid_action = _render_video_step(
+                veo_slots, "veo", default_duration=4, duration_options=[4, 6, 8],
+            )
 
-                def _ss_progress(i, total, msg):
-                    progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
+        # Step 3: Captions
+        with st.expander("Step 3: Captions", expanded=False):
+            _render_caption_step(veo_slots, "veo_cap")
 
-                with st.spinner(f"Generating slideshows for {len(eligible)} slots..."):
-                    result = batch_generate_slideshows(
-                        slots=eligible,
-                        slide_count=slideshow_slides,
-                        duration_per_slide=slideshow_duration,
-                        progress_callback=_ss_progress,
+# -------------------------------------------------------
+# TAB: Slideshow
+# -------------------------------------------------------
+with tabs[4]:
+    ss_slots = route_groups.get("reel-slideshow", [])
+    if not ss_slots:
+        st.info("No slideshow slots in this date range.")
+    else:
+        # Step 1: Slideshow generation
+        _ss1, _ss2 = st.columns(2)
+        ss_slides = _ss1.slider("Images per slideshow", 3, 10, 5, key="ss_slides")
+        ss_dur = _ss2.slider("Seconds/slide", 2.0, 5.0, 3.0, step=0.5, key="ss_dur")
+
+        ss_slot_ids = [s["id"] for s in ss_slots]
+        _ss_done = sum(1 for cid in ss_slot_ids if cid in slideshow_map)
+        _ss_eligible = len(ss_slots) - _ss_done
+
+        with st.expander(f"Step 1: Slideshows — {_ss_done}/{len(ss_slots)} done", expanded=_ss_eligible > 0):
+            st.progress(_ss_done / max(len(ss_slots), 1),
+                        text=f"Slideshows: {_ss_done}/{len(ss_slots)}")
+            if _ss_eligible > 0:
+                if st.button(
+                    f"Generate Slideshows ({_ss_eligible})",
+                    type="primary", key="ss_run",
+                    help="Free (FFmpeg)",
+                ):
+                    eligible = [s for s in ss_slots if s["id"] not in slideshow_map]
+                    progress_bar = st.progress(0, text="Starting slideshow generation...")
+
+                    def _ss_cb(i, total, msg):
+                        progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
+
+                    with st.spinner(f"Generating slideshows for {len(eligible)} slots..."):
+                        result = batch_generate_slideshows(
+                            slots=eligible, slide_count=ss_slides,
+                            duration_per_slide=ss_dur, progress_callback=_ss_cb,
+                        )
+                    progress_bar.empty()
+                    st.success(
+                        f"{result['success']} generated, {result['skipped']} skipped, "
+                        f"{result['failed']} failed"
                     )
-                    st.session_state["bp_slideshow_result"] = result
+                    if result["errors"]:
+                        for err in result["errors"]:
+                            st.warning(err)
+                    st.rerun()
 
-                progress_bar.empty()
-                st.success(
-                    f"Slideshows: {result['success']} generated, {result['skipped']} skipped, "
-                    f"{result['failed']} failed"
-                )
-                if result["errors"]:
-                    for err in result["errors"]:
-                        st.warning(err)
-                st.rerun()
+        # Step 2: Music
+        with st.expander("Step 2: Music", expanded=_ss_done > 0 and _ss_eligible == 0):
+            ss_mus_accepted, ss_mus_action = _render_music_step(ss_slots, "ss")
 
-    # Note: slideshow music+composite is handled in the reel music step above
-    # (slideshow_slots are in music_slots already)
+        # Step 3: Composite
+        with st.expander("Step 3: Composite",
+                         expanded=not ss_mus_action and _ss_done > 0):
+            ss_comp_done, ss_comp_action = _render_composite_step(ss_slots, "ss")
 
-
-# -------------------------------------------------------
-# CAPTIONS (only production-ready slots)
-# -------------------------------------------------------
-st.markdown("---")
-
-# Determine which slots are caption-ready:
-# - feed: always ready (just need media)
-# - carousel: skip (captions come from carousel generation)
-# - reel-kling / reel-slideshow: ready when composite is done
-# - reel-veo: ready when video is accepted
-_carousel_cal_ids = set(s["id"] for s in carousel_slots_list) if 'carousel_slots_list' in dir() and carousel_slots_list else set()
-_caption_ready_ids = set()
-for s in slots_with_media:
-    sid = s["id"]
-    route = s.get("target_format") or "feed"
-    if route in ("story", ""):
-        route = "feed"
-    if route == "reel":
-        route = "reel-kling"
-
-    if sid in _carousel_cal_ids:
-        continue  # carousel captions handled separately
-    if route == "feed":
-        _caption_ready_ids.add(sid)
-    elif route in ("reel-kling", "reel-slideshow"):
-        if any(c.get("status") != "rejected" for c in composite_map.get(sid, [])):
-            _caption_ready_ids.add(sid)
-    elif route == "reel-veo":
-        if any(v.get("status") == "accepted" for v in video_map.get(sid, [])):
-            _caption_ready_ids.add(sid)
-
-_cap_have = sum(1 for cid in cal_ids if cid in content_map)
-_cap_need_ready = sum(1 for cid in _caption_ready_ids if cid not in content_map)
-_cap_total_eligible = len(_caption_ready_ids)
-_cap_icon = "green" if _cap_need_ready == 0 and _cap_have > 0 else ("orange" if _cap_have > 0 else "gray")
-
-st.markdown(f"### Captions ({_cap_total_eligible} eligible of {total_slots} slots)")
-
-with st.expander(
-    f":{_cap_icon}[CAPTIONS] — {_cap_have} done, {_cap_need_ready} ready for captions",
-    expanded=_cap_need_ready > 0,
-):
-    if _cap_have > 0:
-        st.markdown(f":green[{_cap_have} slot{'s' if _cap_have != 1 else ''} have captions]")
-    _not_ready = total_slots - len(_caption_ready_ids) - len(_carousel_cal_ids)
-    if _not_ready > 0:
-        st.caption(f"{_not_ready} reel slot{'s' if _not_ready != 1 else ''} not ready yet (need accepted video/composite)")
-    if len(_carousel_cal_ids) > 0:
-        st.caption(f"{len(_carousel_cal_ids)} carousel slot{'s' if len(_carousel_cal_ids) != 1 else ''} — captions included in carousel step")
-    if _cap_need_ready > 0:
-        _entries_for_cost = [s for s in slots_with_media if s["id"] in _caption_ready_ids and s["id"] not in content_map]
-        cap_est = estimate_batch_cost(
-            _entries_for_cost,
-            caption_model,
-            caption_include_image,
-        )
-        st.markdown(f":gray[{_cap_need_ready} slot{'s' if _cap_need_ready != 1 else ''} need captions]")
-
-        if st.button(
-            f"Generate Captions ({_cap_need_ready})",
-            type="primary", key="bp_run_captions",
-            help=f"~${cap_est['estimated_cost_usd']:.2f}",
-        ):
-            entries_to_caption = _entries_for_cost
-            progress_bar = st.progress(0, text="Generating captions...")
-            success_count = 0
-            total_cost = 0.0
-            total = len(entries_to_caption)
-
-            for i, entry in enumerate(entries_to_caption):
-                try:
-                    image_b64 = None
-                    if caption_include_image:
-                        mid = entry.get("manual_media_id") or entry.get("media_id")
-                        mi = media_info.get(mid, {}) if mid else {}
-                        dfid = mi.get("drive_file_id")
-                        if dfid:
-                            from src.utils import encode_image_bytes
-                            raw = download_file_bytes(dfid)
-                            image_b64 = encode_image_bytes(raw)
-
-                    result = generate_for_slot(
-                        entry=entry,
-                        model=caption_model,
-                        include_image=caption_include_image,
-                        image_base64=image_b64,
-                        tone=caption_tone,
-                    )
-                    if result:
-                        success_count += 1
-                        total_cost += result.get("cost_usd", 0)
-                except Exception as e:
-                    st.warning(f"Failed for {entry['post_date']} S{entry.get('slot_index', 1)}: {e}")
-
-                progress_bar.progress((i + 1) / total, text=f"Generated {i + 1}/{total}...")
-
-            progress_bar.empty()
-            st.success(f"Generated captions for {success_count}/{total} slots (${total_cost:.4f})")
-            st.rerun()
-    elif _cap_need_ready == 0 and _cap_have > 0:
-        st.success("All eligible slots have captions!")
+        # Step 4: Captions
+        with st.expander("Step 4: Captions", expanded=False):
+            _render_caption_step(ss_slots, "ss_cap")
 
 # -------------------------------------------------------
-# Link to content drafts
+# Footer
 # -------------------------------------------------------
 st.divider()
 st.page_link("pages/11_Drafts_Review.py", label="Content Drafts (all content) ->", icon=":material/rate_review:")

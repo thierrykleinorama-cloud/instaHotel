@@ -142,6 +142,7 @@
 - [x] **Content type routing** — Route system replaces format: feed/carousel/reel-kling/reel-veo/reel-slideshow. Each route defines full production path. Batch Pipeline routes slots by route, no manual model selector. Rules page updated with route selectbox. Calendar shows route badges + generated content preview (video players, carousel thumbnails). DB migration: carousel_drafts gets calendar_id FK. DONE 2026-03-09.
 - [x] **Production Workflow UX Redesign** — Stepper pipeline with inline review on Production Pipeline page. Gates between steps, scenarios grouped by slot with accept-one pattern, captions as final step. Calendar shows multi-step pipeline progress badges (Sc/Vid/Mus/Comp). Drafts Review renamed to Content Drafts with slot grouping toggle. Shared review component extracted to `app/components/review_controls.py`. DONE 2026-03-10.
 - [x] **Pipeline UX fixes** — Rejected videos/scenarios/music no longer block regeneration. Inline review requires feedback text for rejection. Caption step only counts production-ready slots (feed always, reels after composite, veo after accepted video, carousel excluded). Calendar dot color reflects pipeline progress (green=ready, orange=in-progress, blue=has content). DONE 2026-03-10.
+- [x] **Route-based tabs + 1:1 calendar status mapping** — Pipeline page rewritten with 1 tab per route (Image Posts / Carousel / Reel Kling / Reel Veo / Slideshow), each self-contained with settings + pipeline steps. Settings moved from sidebar to inline rows per tab. Shared helpers extracted (`_render_scenario_step`, `_render_video_step`, `_render_music_step`, `_render_composite_step`, `_render_caption_step`). `creative_status` now updated on accept/reject (not just batch generation). Calendar badges read `creative_status` column directly — removed 6 prefetch queries for ~6x faster Calendar page loads. Legacy status mapping for backward compat. DONE 2026-03-10.
 ### Drafts Review UX (short-term polish) — DONE 2026-03-09
 - [x] **Scenario thumbnails** — Source photo thumbnail shown next to scenario description in Drafts Review
 - [x] **Carousel preview in Drafts Review** — Full IG-style carousel preview with `render_ig_preview_carousel()` inline, side-by-side with captions + hashtags
@@ -169,6 +170,9 @@
 - [ ] **Publication dashboard** — Stats, best performing content, trends
 - [ ] **Auto-push validated slots** — No manual export, direct queue
 - [ ] **Replicabilite multi-hotel** — Malaga property support
+
+### UX Polish (low priority)
+- [ ] **Rethink Content Drafts page** — Mostly redundant now that Production Pipeline has inline review. Consider: remove entirely (AI Lab pages have their own accept/reject), or repurpose as "Prompt Improvement" page showing rejected items grouped by reason.
 
 ### Prompts & Content Quality
 - [ ] **Translate prompts to English** — Most prompts in `/src/prompts/` are in French (caption_generation, creative_transform, tone_variants). destination_content is already English.

@@ -179,7 +179,7 @@ def batch_generate_scenarios(
                 calendar_id=cal_id,
             )
 
-            update_calendar_creative_status(cal_id, "scenarios_generated")
+            update_calendar_creative_status(cal_id, "scenarios_draft")
             success += 1
 
         except Exception as e:
@@ -308,7 +308,7 @@ def batch_generate_videos(
                 calendar_id=cal_id,
             )
 
-            update_calendar_creative_status(cal_id, "video_generated")
+            update_calendar_creative_status(cal_id, "video_draft")
             success += 1
 
         except Exception as e:
@@ -424,7 +424,7 @@ def batch_generate_music(
                 calendar_id=cal_id,
             )
 
-            update_calendar_creative_status(cal_id, "music_generated")
+            update_calendar_creative_status(cal_id, "music_draft")
             success += 1
 
         except Exception as e:
@@ -567,7 +567,7 @@ def batch_composite(
                 row["drive_file_id"] = drive_fid
             client.table(TABLE_CREATIVE_JOBS).insert(row).execute()
 
-            update_calendar_creative_status(cal_id, "complete")
+            update_calendar_creative_status(cal_id, "composite_done")
             success += 1
 
         except Exception as e:
@@ -702,7 +702,7 @@ def batch_generate_carousels(
                 calendar_id=cal_id,
             )
 
-            update_calendar_creative_status(cal_id, "carousel_generated")
+            update_calendar_creative_status(cal_id, "carousel_draft")
             success += 1
 
         except Exception as e:
@@ -853,7 +853,7 @@ def batch_generate_slideshows(
                 row["drive_file_id"] = drive_fid
             client.table(TABLE_CREATIVE_JOBS).insert(row).execute()
 
-            update_calendar_creative_status(cal_id, "slideshow_generated")
+            update_calendar_creative_status(cal_id, "slideshow_done")
             success += 1
 
         except Exception as e:
