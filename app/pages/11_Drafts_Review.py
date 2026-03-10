@@ -341,15 +341,19 @@ with tab_music:
         with st.expander(f":{color}[{mu_status.upper()}] {date_str}  —  *{source_name}*  —  {prompt_preview}"):
             # Play audio: prefer Drive download (Drive view links don't stream)
             _mu_played = False
+            _mu_error = None
             if mu.get("drive_file_id"):
                 try:
                     _mu_bytes = download_file_bytes(mu["drive_file_id"])
                     st.audio(_mu_bytes, format="audio/wav")
                     _mu_played = True
-                except Exception:
-                    pass
+                except Exception as _mu_ex:
+                    _mu_error = str(_mu_ex)
             if not _mu_played and mu.get("audio_url") and "drive.google.com" not in mu.get("audio_url", ""):
                 st.audio(mu["audio_url"])
+                _mu_played = True
+            if not _mu_played:
+                st.warning(f"Cannot play audio — Drive download failed: {_mu_error or 'no audio source'}")
 
             if mu.get("prompt"):
                 st.text_area("Prompt", value=mu["prompt"], height=80,

@@ -76,6 +76,13 @@ def _authenticate() -> Credentials:
     return creds
 
 
+def _reset_drive_service():
+    """Clear cached service so next call re-authenticates."""
+    global _drive_service, _drive_creds
+    _drive_service = None
+    _drive_creds = None
+
+
 def get_drive_service():
     """Get or create Google Drive API service. Re-authenticates if creds expired."""
     global _drive_service, _drive_creds
@@ -125,15 +132,27 @@ def list_media_files(folder_id: Optional[str] = None) -> list[dict]:
 
 
 def download_file_bytes(file_id: str) -> bytes:
-    """Download a file from Drive and return its bytes."""
-    service = get_drive_service()
-    request = service.files().get_media(fileId=file_id)
-    buffer = io.BytesIO()
-    downloader = MediaIoBaseDownload(buffer, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    return buffer.getvalue()
+    """Download a file from Drive and return its bytes.
+
+    Retries once with fresh credentials on auth errors (stale token).
+    """
+    for attempt in range(2):
+        try:
+            service = get_drive_service()
+            request = service.files().get_media(fileId=file_id)
+            buffer = io.BytesIO()
+            downloader = MediaIoBaseDownload(buffer, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            return buffer.getvalue()
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if attempt == 0 and ("invalid_grant" in err_msg or "expired" in err_msg
+                                 or "401" in err_msg or "credentials" in err_msg):
+                _reset_drive_service()
+                continue
+            raise
 
 
 def classify_media_type(mime_type: str) -> Optional[str]:
