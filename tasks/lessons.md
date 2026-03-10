@@ -120,9 +120,28 @@
 **Erreur** : Tested video generation via Python API only. When user tested the UI, it failed (stale module cache + wrong model ID).
 **Regle** : Always test through the actual Streamlit UI (via Playwright or manual) after code changes, not just via Python scripts.
 
+## Lesson 2026-03-09 — Route system replaces format
+**Erreur** : `preferred_format` held simple values (feed/story/reel) but the batch pipeline needed to know both the content type AND the production model (Kling vs Veo).
+**Pattern** : A single "route" value (e.g. `reel-kling`, `reel-veo`) fully defines the production path, eliminating ambiguity.
+**Regle** : Use route = full production path. No separate model selector needed — the route determines everything. Always handle legacy values (`reel` → `reel-kling`, `story` → `feed`).
+
+## Lesson 2026-03-09 — Veo skips music+composite
+**Observation** : Veo 3.1 generates video with native audio. Adding MusicGen + FFmpeg composite would overwrite the native audio and add unnecessary cost.
+**Regle** : Route determines which pipeline steps apply. `reel-veo` = scenario → video → done. `reel-kling` + `reel-slideshow` = need music + composite.
+
+## Lesson 2026-03-09 — Batch fetch before per-slot loop
+**Erreur** : Early batch code fetched scenarios/videos per-slot in a loop = N+1 queries.
+**Regle** : Always `fetch_*_for_calendar_ids(all_ids)` once before the loop, then look up from the dict. Critical for performance with 20+ slots.
+
+## Lesson 2026-03-09 — Keep memory files synchronized
+**Erreur** : MEMORY.md, architecture.md, and tasks/todo.md drifted apart — services/pages added without updating architecture, completed items not reflected in MEMORY status.
+**Regle** : When completing a feature, update ALL 3: (1) `tasks/todo.md` BACKLOG (mark done), (2) MEMORY.md status section, (3) architecture.md if new files/services were added. Do it incrementally, not at end of session.
+
 ---
 
 ## Regles du projet
 1. **Simplicity First** : Quand la logique devient complexe, preferer le code Python clair
 2. **Performance** : Minimiser les appels DB, batch fetch, pas de N+1
 3. **Plan mode** : Pour les features non triviales, planifier avant d'implementer
+4. **Memory sync** : Update todo.md + MEMORY.md + architecture.md together when completing features
+5. **Route = path** : Content type routing defines full production pipeline per slot
