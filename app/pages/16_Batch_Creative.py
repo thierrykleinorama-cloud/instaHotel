@@ -596,7 +596,7 @@ def _render_caption_step(slots, key_prefix, exclude_carousel=True):
     c1, c2, c3 = st.columns(3)
     cap_model = c1.selectbox("Caption Model", ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
                              key=f"{key_prefix}_cap_model")
-    cap_img = c2.checkbox("Include image", value=False, key=f"{key_prefix}_cap_img")
+    cap_img = c2.checkbox("Include image", value=True, key=f"{key_prefix}_cap_img")
     cap_tone = c3.selectbox("Tone", list(TONE_LABELS.keys()),
                             format_func=lambda k: TONE_LABELS[k],
                             key=f"{key_prefix}_cap_tone")
