@@ -149,3 +149,6 @@
 7. **Inline review > page bounce** : Reviewing content on the same page where it's generated eliminates page switching. Accept-one pattern (accept variant A, auto-reject B/C) reduces decisions
 8. **Extract shared components** : When the same widget (review controls) appears in multiple pages, extract to `app/components/` — keeps behavior consistent and code DRY
 9. **Group by slot** : Flat lists of scenarios/videos are meaningless without slot context. Always group creative items by their calendar slot for user clarity
+10. **Rejected ≠ processed** : When checking "already processed" in batch operations, ALWAYS filter out rejected items. `status != "rejected"` is the correct check. A rejected video should be regeneratable, not treated as done.
+11. **Smart caption gating** : Don't offer to generate captions for ALL slots — only slots whose creative pipeline is complete (feed=always, reel=after composite, veo=after accepted video, carousel=skip because captions come with carousel generation)
+12. **Pipeline color > editorial status** : The dot color in Calendar should reflect pipeline progress (green=production-ready, orange=in-progress), not just the editorial status (planned/generated). Users see "all blue" otherwise.

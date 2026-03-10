@@ -46,7 +46,7 @@ pg = st.navigation(
         "Editorial": [
             st.Page("pages/9_Calendar.py", title="Calendar", icon=":material/calendar_month:"),
             st.Page("pages/10_Rules.py", title="Rules", icon=":material/tune:"),
-            st.Page("pages/11_Drafts_Review.py", title="Review History", icon=":material/rate_review:"),
+            st.Page("pages/11_Drafts_Review.py", title="Content Drafts", icon=":material/rate_review:"),
             st.Page("pages/15_Prompt_Viewer.py", title="Prompts", icon=":material/description:"),
         ],
     }

@@ -81,7 +81,7 @@ def render_review_controls(item_id: str, item_type: str, current_status: str, ke
 
 def render_inline_review(item_id: str, item_type: str, current_status: str, key_prefix: str,
                          on_accept_callback=None):
-    """Compact inline review for Production Pipeline — just accept/reject buttons.
+    """Compact inline review for Production Pipeline — accept/reject with feedback.
 
     on_accept_callback: optional callable(item_id) invoked after accept (e.g. to reject siblings).
     Returns True if an action was taken.
@@ -93,17 +93,26 @@ def render_inline_review(item_id: str, item_type: str, current_status: str, key_
         st.markdown(f":{color}[{current_status.upper()}]")
         return False
 
+    feedback_text = st.text_input(
+        "Feedback",
+        key=f"{key_prefix}_fb_{item_id}",
+        placeholder="Why accept/reject? (required for reject)",
+        label_visibility="collapsed",
+    )
     col_a, col_r = st.columns(2)
     with col_a:
         if st.button("Accept", key=f"{key_prefix}_acc_{item_id}", type="primary",
                       use_container_width=True):
-            _do_feedback(item_id, item_type, "accepted", "", 3)
+            _do_feedback(item_id, item_type, "accepted", feedback_text, 3)
             if on_accept_callback:
                 on_accept_callback(item_id)
             st.rerun()
     with col_r:
         if st.button("Reject", key=f"{key_prefix}_rej_{item_id}",
                       use_container_width=True):
-            _do_feedback(item_id, item_type, "rejected", "", 3)
-            st.rerun()
+            if not feedback_text.strip():
+                st.warning("Please add a reason before rejecting")
+            else:
+                _do_feedback(item_id, item_type, "rejected", feedback_text, 2)
+                st.rerun()
     return False

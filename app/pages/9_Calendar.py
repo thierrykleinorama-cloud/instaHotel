@@ -294,6 +294,46 @@ def _pipeline_badges(entry_id: str, route: str) -> str:
     return " ".join(badges)
 
 
+def _pipeline_color(entry_id: str, route: str, has_content: bool) -> str:
+    """Return overall status color based on pipeline progress.
+
+    green = production-ready, orange = pipeline in-progress, blue = has content/media, gray = not started.
+    """
+    if route == "feed":
+        return "green" if has_content else "blue"
+    elif route == "carousel":
+        car_list = _carousel_map_all.get(entry_id, [])
+        if car_list and any(c.get("status") == "accepted" for c in car_list):
+            return "green"
+        elif car_list:
+            return "orange"
+        return "blue"
+    elif route in ("reel-kling", "reel-slideshow"):
+        comp_list = _composite_map.get(entry_id, [])
+        if any(c.get("status") != "rejected" for c in comp_list):
+            return "green"
+        vid_list = _video_map.get(entry_id, [])
+        mus_list = _music_map.get(entry_id, [])
+        ss_list = _slideshow_map_all.get(entry_id, [])
+        if vid_list or mus_list or ss_list:
+            return "orange"
+        sc_list = _scenario_map.get(entry_id, [])
+        if sc_list:
+            return "orange"
+        return "blue"
+    elif route == "reel-veo":
+        vid_list = _video_map.get(entry_id, [])
+        if any(v.get("status") == "accepted" for v in vid_list):
+            return "green"
+        if vid_list:
+            return "orange"
+        sc_list = _scenario_map.get(entry_id, [])
+        if sc_list:
+            return "orange"
+        return "blue"
+    return "blue"
+
+
 # -------------------------------------------------------
 # Sidebar — Batch Caption Generation
 # -------------------------------------------------------
@@ -578,7 +618,8 @@ if view_mode == "Week Grid":
                         if media_id:
                             score_str = f"{score:.0f}" if score else "—"
                             caption_icon = " &check;" if has_content else ""
-                            st.markdown(f":{STATUS_COLORS.get(status, 'gray')}[●] {cat}{_dest_tag}{_route_tag}{caption_icon}")
+                            _dot_color = _pipeline_color(entry["id"], _route, has_content)
+                            st.markdown(f":{_dot_color}[●] {cat}{_dest_tag}{_route_tag}{caption_icon}")
                             st.caption(f"S{slot} | {score_str}pts")
                             # Pipeline progress dots
                             _grid_badges = _pipeline_badges(entry["id"], _route)
@@ -609,7 +650,6 @@ else:
         has_content = entry["id"] in _content_map
 
         score_str = f"{score:.1f}" if score else "—"
-        color = STATUS_COLORS.get(status, "gray")
         caption_tag = " | captions" if has_content else ""
         _focus = entry.get("focus", "hotel")
         _focus_tag = " | Destination" if _focus == "destination" else ""
@@ -619,6 +659,8 @@ else:
         _route_label = ROUTE_LABELS.get(_route, _route)
         _route_color = ROUTE_COLORS.get(_route, "gray")
         _route_tag = f" | :{_route_color}[{_route_label}]"
+        # Pipeline-aware dot color
+        color = _pipeline_color(entry["id"], _route, has_content)
         # Pipeline progress badges (multi-step)
         _pipe_badges = _pipeline_badges(entry["id"], _route)
         _creative_tag = f" | {_pipe_badges}" if _pipe_badges else ""

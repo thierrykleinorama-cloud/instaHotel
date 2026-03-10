@@ -145,10 +145,12 @@ def batch_generate_scenarios(
         if progress_callback:
             progress_callback(i, total, f"Slot {i+1}/{total}: generating scenarios...")
 
-        # Skip if already has scenarios
-        if cal_id in existing and len(existing[cal_id]) > 0:
-            skipped += 1
-            continue
+        # Skip if already has active (non-rejected) scenarios
+        if cal_id in existing:
+            active = [s for s in existing[cal_id] if s.get("status") != "rejected"]
+            if active:
+                skipped += 1
+                continue
 
         try:
             media, image_b64 = _get_media_and_image(slot, include_image)
@@ -242,10 +244,12 @@ def batch_generate_videos(
         if progress_callback:
             progress_callback(i, total, f"Slot {i+1}/{total}: generating video ({slot_model})...")
 
-        # Skip if already has a video
-        if cal_id in existing_videos and len(existing_videos[cal_id]) > 0:
-            skipped += 1
-            continue
+        # Skip if already has an active (non-rejected) video
+        if cal_id in existing_videos:
+            active = [v for v in existing_videos[cal_id] if v.get("status") != "rejected"]
+            if active:
+                skipped += 1
+                continue
 
         try:
             # Find accepted scenario
@@ -359,10 +363,12 @@ def batch_generate_music(
         if progress_callback:
             progress_callback(i, total, f"Slot {i+1}/{total}: generating music...")
 
-        # Skip if already has music
-        if cal_id in existing_music and len(existing_music[cal_id]) > 0:
-            skipped += 1
-            continue
+        # Skip if already has active (non-rejected) music
+        if cal_id in existing_music:
+            active = [m for m in existing_music[cal_id] if m.get("status") != "rejected"]
+            if active:
+                skipped += 1
+                continue
 
         try:
             # Check for accepted video (covers both reel-kling and slideshow)
@@ -470,10 +476,12 @@ def batch_composite(
         if progress_callback:
             progress_callback(i, total, f"Slot {i+1}/{total}: compositing...")
 
-        # Skip if already has a composite
-        if cal_id in existing_composites and len(existing_composites[cal_id]) > 0:
-            skipped += 1
-            continue
+        # Skip if already has an active (non-rejected) composite
+        if cal_id in existing_composites:
+            active = [c for c in existing_composites[cal_id] if c.get("status") != "rejected"]
+            if active:
+                skipped += 1
+                continue
 
         try:
             # Need accepted video + accepted music
@@ -619,10 +627,12 @@ def batch_generate_carousels(
         if progress_callback:
             progress_callback(i, total, f"Slot {i+1}/{total}: generating carousel...")
 
-        # Skip if already has a carousel
-        if cal_id in existing and len(existing[cal_id]) > 0:
-            skipped += 1
-            continue
+        # Skip if already has an active (non-rejected) carousel
+        if cal_id in existing:
+            active = [c for c in existing[cal_id] if c.get("status") != "rejected"]
+            if active:
+                skipped += 1
+                continue
 
         try:
             cat = slot.get("target_category") or "experience"
@@ -753,10 +763,12 @@ def batch_generate_slideshows(
         if progress_callback:
             progress_callback(i, total, f"Slot {i+1}/{total}: generating slideshow...")
 
-        # Skip if already has a slideshow
-        if cal_id in existing and len(existing[cal_id]) > 0:
-            skipped += 1
-            continue
+        # Skip if already has an active (non-rejected) slideshow
+        if cal_id in existing:
+            active = [s for s in existing[cal_id] if s.get("status") != "rejected"]
+            if active:
+                skipped += 1
+                continue
 
         try:
             cat = slot.get("target_category") or "experience"
