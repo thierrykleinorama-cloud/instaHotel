@@ -231,8 +231,8 @@ def batch_generate_videos(
 
     for i, slot in enumerate(slots):
         cal_id = slot["id"]
-        # Determine model from route (fall back to parameter)
-        slot_model = get_video_model_for_slot(slot) if slot.get("target_format") in ROUTE_VIDEO_MODEL else video_model
+        # Use explicit model if caller specified one, otherwise derive from route
+        slot_model = video_model if video_model != "kling-v2.1" else get_video_model_for_slot(slot)
         # Adapt duration for provider
         model_info = VIDEO_MODELS.get(slot_model, {})
         slot_duration = duration

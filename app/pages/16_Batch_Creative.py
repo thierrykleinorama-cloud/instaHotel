@@ -325,8 +325,12 @@ def _render_scenario_step(slots, key_prefix):
     return sc_accepted, needs_action
 
 
-def _render_video_step(slots, key_prefix, default_duration, duration_options, aspect_default="9:16"):
-    """Render video generation + inline review. Returns (accepted_count, needs_action)."""
+def _render_video_step(slots, key_prefix, default_duration, duration_options, aspect_default="9:16",
+                       video_model_override: str = None):
+    """Render video generation + inline review. Returns (accepted_count, needs_action).
+
+    video_model_override: if set, forces this model instead of route-based default.
+    """
     slot_ids = [s["id"] for s in slots]
 
     # Settings row
@@ -373,7 +377,8 @@ def _render_video_step(slots, key_prefix, default_duration, duration_options, as
         st.caption(f"{vid_blocked} waiting on scenario")
 
     if vid_eligible > 0:
-        vid_est = estimate_video_cost(vid_eligible, slots[0].get("_video_model", "kling-v2.1"), vid_duration)
+        _est_model = video_model_override or slots[0].get("_video_model", "kling-v2.1")
+        vid_est = estimate_video_cost(vid_eligible, _est_model, vid_duration)
         if st.button(
             f"Generate Videos ({vid_eligible})",
             type="primary", key=f"{key_prefix}_run_vid",
@@ -388,9 +393,11 @@ def _render_video_step(slots, key_prefix, default_duration, duration_options, as
             def _cb(i, total, msg):
                 progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
 
+            _gen_model = video_model_override or "kling-v2.1"
             with st.spinner(f"Generating videos for {len(eligible)} slots..."):
                 result = batch_generate_videos(
-                    slots=eligible, duration=vid_duration, aspect_ratio=vid_aspect,
+                    slots=eligible, video_model=_gen_model,
+                    duration=vid_duration, aspect_ratio=vid_aspect,
                     progress_callback=_cb,
                 )
             progress_bar.empty()
@@ -961,6 +968,13 @@ with tabs[3]:
     if not veo_slots:
         st.info("No Veo reel slots in this date range.")
     else:
+        # Veo model selector
+        _veo_model = st.selectbox(
+            "Veo Model", ["veo-3.1-fast", "veo-3.1"],
+            format_func=lambda m: "Veo 3.1 Fast (~$0.15/s)" if m == "veo-3.1-fast" else "Veo 3.1 Standard (~$0.75/s)",
+            key="veo_tab_model",
+        )
+
         # Step 1: Scenarios
         with st.expander("Step 1: Scenarios", expanded=True):
             veo_sc_accepted, veo_sc_action = _render_scenario_step(veo_slots, "veo")
@@ -969,6 +983,7 @@ with tabs[3]:
         with st.expander(f"Step 2: Videos — {veo_sc_accepted} scenarios ready", expanded=not veo_sc_action):
             veo_vid_accepted, veo_vid_action = _render_video_step(
                 veo_slots, "veo", default_duration=4, duration_options=[4, 6, 8],
+                video_model_override=_veo_model,
             )
 
         # Step 3: Captions
