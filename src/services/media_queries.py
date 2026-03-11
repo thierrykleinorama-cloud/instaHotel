@@ -14,7 +14,7 @@ from src.database import get_supabase, TABLE_MEDIA_LIBRARY, TABLE_TAG_CORRECTION
 def fetch_all_media(media_type: Optional[str] = None) -> list[dict]:
     """Fetch all analyzed media rows. Cached 60s."""
     client = get_supabase()
-    query = client.table(TABLE_MEDIA_LIBRARY).select("*").eq("status", "analyzed")
+    query = client.table(TABLE_MEDIA_LIBRARY).select("*").eq("status", "analyzed").eq("is_excluded", False)
     if media_type:
         query = query.eq("media_type", media_type)
     result = query.order("file_name").execute()

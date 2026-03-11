@@ -48,13 +48,12 @@ from src.services.content_generator import (
 from src.services.caption_generator import AVAILABLE_MODELS, DEFAULT_MODEL
 from src.prompts.tone_variants import TONE_LABELS, TONE_LABELS_REVERSE
 from src.services.creative_queries import (
-    fetch_accepted_video_for_calendar,
     fetch_composite_for_calendar_ids,
     fetch_videos_for_calendar_ids,
-    fetch_slideshow_for_calendar as _fetch_slideshow_for_cal,
+    fetch_slideshows_for_calendar_ids,
 )
 from src.services.carousel_queries import (
-    fetch_carousel_for_calendar,
+    fetch_carousels_for_calendar_ids,
 )
 
 # Sonnet model picker — short labels, default first
@@ -209,6 +208,12 @@ if not calendar_data:
 # Pre-fetch content for all visible calendar entries
 _calendar_ids = [e["id"] for e in calendar_data]
 _content_map = fetch_content_for_calendar_range(_calendar_ids)
+
+# Pre-fetch creative data for content preview in list view (batch, not per-slot)
+_video_map = fetch_videos_for_calendar_ids(_calendar_ids)
+_composite_map = fetch_composite_for_calendar_ids(_calendar_ids)
+_slideshow_map_all = fetch_slideshows_for_calendar_ids(_calendar_ids)
+_carousel_map_all = fetch_carousels_for_calendar_ids(_calendar_ids)
 
 # -------------------------------------------------------
 # Pipeline badges from creative_status (single column, no extra queries)
@@ -571,6 +576,7 @@ with st.expander("Status workflow & actions guide", expanded=False):
 # Week Grid View
 # -------------------------------------------------------
 if view_mode == "Week Grid":
+    st.caption("Grid shows status dots and route badges. Switch to **List** view for full slot details, media preview, and actions.")
     # Group entries by week start (Monday)
     entries_by_date: dict[str, list[dict]] = {}
     for e in calendar_data:
@@ -732,11 +738,9 @@ else:
                 _gen_c1, _gen_c2 = st.columns([2, 1])
                 with _gen_c1:
                     if _route in ("reel-kling", "reel-veo"):
-                        # Show accepted video or composite
-                        _comp_map_local = fetch_composite_for_calendar_ids([entry["id"]])
-                        _comp_list = _comp_map_local.get(entry["id"], [])
-                        _vid_map_local = fetch_videos_for_calendar_ids([entry["id"]])
-                        _vid_list = _vid_map_local.get(entry["id"], [])
+                        # Show accepted video or composite (from batch-fetched maps)
+                        _comp_list = _composite_map.get(entry["id"], [])
+                        _vid_list = _video_map.get(entry["id"], [])
                         _best_vid = None
                         # Prefer composite, then accepted video
                         if _comp_list:
@@ -764,7 +768,8 @@ else:
                             st.caption(f"No video generated yet (:{_route_color}[{_route_label}])")
 
                     elif _route == "reel-slideshow":
-                        _ss = _fetch_slideshow_for_cal(entry["id"])
+                        _ss_list = _slideshow_map_all.get(entry["id"], [])
+                        _ss = _ss_list[0] if _ss_list else None
                         if _ss:
                             _ss_url = _ss.get("result_url", "")
                             _ss_drive = _ss.get("drive_file_id")
@@ -782,7 +787,8 @@ else:
                             st.caption("No slideshow generated yet")
 
                     elif _route == "carousel":
-                        _car = fetch_carousel_for_calendar(entry["id"])
+                        _car_list = _carousel_map_all.get(entry["id"], [])
+                        _car = _car_list[0] if _car_list else None
                         if _car:
                             _car_media_ids = _car.get("media_ids", [])
                             if _car_media_ids:

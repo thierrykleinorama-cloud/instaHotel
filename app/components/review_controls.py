@@ -88,11 +88,28 @@ def render_inline_review(item_id: str, item_type: str, current_status: str, key_
     calendar_id + accept_creative_status: if both set, advances creative_status on accept.
     Returns True if an action was taken.
     """
-    already_reviewed = current_status in ("accepted", "rejected")
+    is_accepted = current_status == "accepted"
+    is_rejected = current_status == "rejected"
 
-    if already_reviewed:
-        color = STATUS_COLORS.get(current_status, "gray")
-        st.markdown(f":{color}[{current_status.upper()}]")
+    if is_rejected:
+        st.markdown(f":red[REJECTED]")
+        return False
+
+    if is_accepted:
+        # Show accepted badge + compact reject option
+        _ac, _rc = st.columns([3, 1])
+        _ac.markdown(":green[ACCEPTED]")
+        feedback_text = _rc.text_input(
+            "fb", key=f"{key_prefix}_fb_{item_id}",
+            placeholder="Reason", label_visibility="collapsed",
+        )
+        if _rc.button("Reject", key=f"{key_prefix}_rej_{item_id}",
+                       use_container_width=True):
+            if not feedback_text.strip():
+                st.warning("Please add a reason before rejecting")
+            else:
+                _do_feedback(item_id, item_type, "rejected", feedback_text, 2)
+                st.rerun()
         return False
 
     feedback_text = st.text_input(

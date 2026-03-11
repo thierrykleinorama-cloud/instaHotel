@@ -135,6 +135,7 @@ def _fetch_analyzed_media() -> list[dict]:
         client.table(TABLE_MEDIA_LIBRARY)
         .select("id,category,subcategory,ambiance,season,elements,ig_quality,aspect_ratio,media_type,file_name,drive_file_id,used_count,last_used_at,description_fr")
         .eq("status", "analyzed")
+        .eq("is_excluded", False)
         .execute()
     )
     return result.data

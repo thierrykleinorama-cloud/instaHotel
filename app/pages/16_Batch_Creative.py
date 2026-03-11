@@ -23,6 +23,7 @@ from src.services.creative_queries import (
     fetch_music_for_calendar_ids,
     fetch_composite_for_calendar_ids,
     fetch_slideshows_for_calendar_ids,
+    fetch_accepted_scenario_for_calendar,
     fetch_media_info,
     accept_scenario_reject_others,
 )
@@ -249,8 +250,26 @@ def _render_scenario_step(slots, key_prefix):
         has_draft = any(s.get("status") == "draft" for s in sc_list)
 
         if has_accepted and not has_draft:
+            # Compact accepted card: thumbnail + title + description + motion prompt
             accepted = [s for s in sc_list if s.get("status") == "accepted"][0]
-            st.markdown(f":green[{_slot_label(slot)}] — *{accepted.get('title', '')}*")
+            _ac1, _ac2 = st.columns([1, 5])
+            with _ac1:
+                _slot_thumbnail(slot, width=80)
+            with _ac2:
+                st.markdown(f":green[{_slot_label(slot)}] — **{accepted.get('title', '')}**")
+                if accepted.get("description"):
+                    st.caption(accepted["description"][:200])
+                _detail_cols = st.columns([2, 1])
+                with _detail_cols[0]:
+                    if accepted.get("motion_prompt"):
+                        with st.popover("Motion prompt"):
+                            st.text(accepted["motion_prompt"])
+                with _detail_cols[1]:
+                    render_inline_review(
+                        accepted["id"], "scenario", "accepted",
+                        f"{key_prefix}_sc_{cid}",
+                        calendar_id=cid, accept_creative_status="scenario_accepted",
+                    )
             continue
 
         st.markdown(f"**{_slot_label(slot)}**")
@@ -369,17 +388,26 @@ def _render_video_step(slots, key_prefix, default_duration, duration_options, as
         vid_list = video_map.get(cid, [])
         if not vid_list:
             continue
-        has_accepted = any(v.get("status") == "accepted" for v in vid_list)
-        if has_accepted:
-            st.markdown(f":green[{_slot_label(slot)}] — video accepted")
+
+        # Show all non-rejected videos (including accepted — with re-reject option)
+        active_vids = [v for v in vid_list if v.get("status") in ("completed", "draft", "accepted")]
+        if not active_vids:
             continue
 
-        st.markdown(f"**{_slot_label(slot)}**")
-        for vj in vid_list:
-            if vj.get("status") not in ("completed", "draft"):
-                continue
-            _vc1, _vc2 = st.columns([2, 1])
+        for vj in active_vids:
+            is_accepted = vj.get("status") == "accepted"
+            # Get scenario title for context
+            _sc = fetch_accepted_scenario_for_calendar(cid)
+            _sc_title = _sc.get("title", "") if _sc else ""
+
+            _vc1, _vc2, _vc3 = st.columns([1, 2, 1])
             with _vc1:
+                _slot_thumbnail(slot, width=80)
+                if _sc_title:
+                    st.caption(f"*{_sc_title}*")
+            with _vc2:
+                _label = f":green[{_slot_label(slot)}]" if is_accepted else f"**{_slot_label(slot)}**"
+                st.markdown(_label)
                 _vid_drive = vj.get("drive_file_id")
                 if _vid_drive:
                     try:
@@ -390,7 +418,7 @@ def _render_video_step(slots, key_prefix, default_duration, duration_options, as
                             st.video(vj["result_url"])
                 elif vj.get("result_url"):
                     st.video(vj["result_url"])
-            with _vc2:
+            with _vc3:
                 params = vj.get("params", {})
                 if isinstance(params, str):
                     params = json.loads(params)
@@ -472,17 +500,18 @@ def _render_music_step(slots, key_prefix, default_duration=10):
         mus_list = music_map.get(cid, [])
         if not mus_list:
             continue
-        has_accepted = any(m.get("status") == "accepted" for m in mus_list)
-        if has_accepted:
-            st.markdown(f":green[{_slot_label(slot)}] — music accepted")
+
+        # Show all non-rejected music (including accepted — with re-reject option)
+        active_mus = [m for m in mus_list if m.get("status") in ("draft", "accepted")]
+        if not active_mus:
             continue
 
-        st.markdown(f"**{_slot_label(slot)}**")
-        for mu in mus_list:
-            if mu.get("status") not in ("draft",):
-                continue
+        for mu in active_mus:
+            is_accepted = mu.get("status") == "accepted"
+            _label = f":green[{_slot_label(slot)}]" if is_accepted else f"**{_slot_label(slot)}**"
             _mc1, _mc2 = st.columns([2, 1])
             with _mc1:
+                st.markdown(_label)
                 _played = False
                 if mu.get("drive_file_id"):
                     try:
@@ -532,13 +561,13 @@ def _render_composite_step(slots, key_prefix, default_volume=0.3):
     comp_eligible = max(0, comp_ready - comp_done)
 
     st.progress(comp_done / max(len(slots), 1),
-                text=f"Composites: {comp_done}/{len(slots)} done")
+                text=f"Video + Music: {comp_done}/{len(slots)} done")
 
     if comp_eligible > 0:
         if st.button(
-            f"Run Composite ({comp_eligible})",
+            f"Add Music to Video ({comp_eligible})",
             type="primary", key=f"{key_prefix}_run_comp",
-            help="Free (FFmpeg)",
+            help="Free (FFmpeg) — merges accepted video + accepted music",
         ):
             eligible = [
                 s for s in slots
@@ -547,22 +576,46 @@ def _render_composite_step(slots, key_prefix, default_volume=0.3):
                      or s["id"] in slideshow_map)
                 and any(m.get("status") == "accepted" for m in music_map.get(s["id"], []))
             ]
-            progress_bar = st.progress(0, text="Starting composite...")
+            progress_bar = st.progress(0, text="Adding music to videos...")
 
             def _cb(i, total, msg):
                 progress_bar.progress((i + 1) / max(total, 1) if i < total else 1.0, text=msg)
 
-            with st.spinner(f"Compositing {len(eligible)} slots..."):
+            with st.spinner(f"Merging video + music for {len(eligible)} slots..."):
                 result = batch_composite(slots=eligible, volume=comp_volume, progress_callback=_cb)
             progress_bar.empty()
             st.success(
-                f"{result['success']} generated, {result['skipped']} skipped, "
+                f"{result['success']} merged, {result['skipped']} skipped, "
                 f"{result['failed']} failed"
             )
             if result["errors"]:
                 for err in result["errors"]:
                     st.warning(err)
             st.rerun()
+
+    # Show done composites with video player
+    for s in slots:
+        cid = s["id"]
+        comp_list = composite_map.get(cid, [])
+        active_comp = [c for c in comp_list if c.get("status") != "rejected"]
+        if not active_comp:
+            continue
+        comp = active_comp[0]
+        _cc1, _cc2 = st.columns([3, 1])
+        with _cc1:
+            st.markdown(f":green[{_slot_label(s)}] — video with music")
+            _comp_drive = comp.get("drive_file_id")
+            if _comp_drive:
+                try:
+                    _comp_bytes = download_file_bytes(_comp_drive)
+                    st.video(_comp_bytes)
+                except Exception:
+                    if comp.get("result_url"):
+                        st.video(comp["result_url"])
+            elif comp.get("result_url"):
+                st.video(comp["result_url"])
+        with _cc2:
+            st.caption("FFmpeg (free)")
 
     return comp_done, comp_eligible > 0
 
@@ -603,6 +656,10 @@ def _render_caption_step(slots, key_prefix, exclude_carousel=True):
 
     st.progress(cap_have / max(len(slots), 1),
                 text=f"Captions: {cap_have}/{len(slots)} done")
+
+    _not_ready = len(slots) - len(caption_ready)
+    if _not_ready > 0:
+        st.caption(f"{_not_ready} slot{'s' if _not_ready != 1 else ''} not ready — complete previous steps first")
 
     if cap_need > 0:
         entries_to_caption = [s for s in slots if s["id"] in caption_ready and s["id"] not in content_map]
@@ -828,8 +885,8 @@ with tabs[2]:
                          expanded=not kling_sc_action and not kling_vid_action):
             kling_mus_accepted, kling_mus_action = _render_music_step(kling_slots, "kling")
 
-        # Step 4: Composite
-        with st.expander("Step 4: Composite",
+        # Step 4: Video + Music
+        with st.expander("Step 4: Video + Music",
                          expanded=not kling_sc_action and not kling_vid_action and not kling_mus_action):
             kling_comp_done, kling_comp_action = _render_composite_step(kling_slots, "kling")
 
@@ -910,8 +967,8 @@ with tabs[4]:
         with st.expander("Step 2: Music", expanded=_ss_done > 0 and _ss_eligible == 0):
             ss_mus_accepted, ss_mus_action = _render_music_step(ss_slots, "ss")
 
-        # Step 3: Composite
-        with st.expander("Step 3: Composite",
+        # Step 3: Video + Music
+        with st.expander("Step 3: Video + Music",
                          expanded=not ss_mus_action and _ss_done > 0):
             ss_comp_done, ss_comp_action = _render_composite_step(ss_slots, "ss")
 
