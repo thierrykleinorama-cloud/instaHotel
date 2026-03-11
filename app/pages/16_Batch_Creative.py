@@ -211,7 +211,13 @@ def _render_scenario_step(slots, key_prefix):
                 text=f"Scenarios: {sc_accepted}/{len(slots)} accepted")
 
     if sc_need_review > 0:
-        st.markdown(f":orange[{sc_need_review} slot{'s' if sc_need_review != 1 else ''} need review]")
+        _review_labels = [
+            _slot_label(s) for s in slots
+            if s["id"] in scenario_map
+            and not any(sc.get("status") == "accepted" for sc in scenario_map.get(s["id"], []))
+            and any(sc.get("status") == "draft" for sc in scenario_map.get(s["id"], []))
+        ]
+        st.markdown(f":orange[Review needed:] {', '.join(_review_labels)}")
     if sc_eligible > 0:
         sc_est = estimate_scenario_cost(sc_eligible, scenario_count, scenario_include_image, scenario_model)
         if st.button(
@@ -239,6 +245,17 @@ def _render_scenario_step(slots, key_prefix):
                 for err in result["errors"]:
                     st.warning(err)
             st.rerun()
+
+    # Show slots with all-rejected scenarios (need regeneration)
+    _all_rejected_sc = [
+        s for s in slots
+        if s["id"] in scenario_map
+        and all(sc.get("status") == "rejected" for sc in scenario_map.get(s["id"], []))
+    ]
+    if _all_rejected_sc:
+        _rej_labels = ", ".join(_slot_label(s) for s in _all_rejected_sc)
+        st.markdown(f":red[All scenarios rejected:] {_rej_labels}")
+        st.caption("Click **Generate Scenarios** above to create new ones for these slots.")
 
     # Inline scenario review
     for slot in slots:
@@ -345,7 +362,13 @@ def _render_video_step(slots, key_prefix, default_duration, duration_options, as
                 text=f"Videos: {vid_accepted}/{len(slots)} accepted")
 
     if vid_need_review > 0:
-        st.markdown(f":orange[{vid_need_review} need review]")
+        _vid_review_labels = [
+            _slot_label(s) for s in slots
+            if s["id"] in video_map
+            and not any(v.get("status") == "accepted" for v in video_map.get(s["id"], []))
+            and any(v.get("status") == "completed" for v in video_map.get(s["id"], []))
+        ]
+        st.markdown(f":orange[Review needed:] {', '.join(_vid_review_labels)}")
     if vid_blocked > 0:
         st.caption(f"{vid_blocked} waiting on scenario")
 
@@ -381,6 +404,18 @@ def _render_video_step(slots, key_prefix, default_duration, duration_options, as
             st.rerun()
     elif len(sc_accepted_ids) == 0:
         st.info("Accept scenarios first")
+
+    # Show slots with all-rejected videos (need regeneration)
+    _all_rejected_vid = [
+        s for s in slots
+        if s["id"] in video_map
+        and all(v.get("status") == "rejected" for v in video_map.get(s["id"], []))
+        and s["id"] in sc_accepted_ids  # has accepted scenario
+    ]
+    if _all_rejected_vid:
+        _rej_vid_labels = ", ".join(_slot_label(s) for s in _all_rejected_vid)
+        st.markdown(f":red[All videos rejected:] {_rej_vid_labels}")
+        st.caption("Click **Generate Videos** above to create new ones for these slots.")
 
     # Inline video review
     for slot in slots:
@@ -749,8 +784,32 @@ st.progress(_ready_count / max(total_slots, 1),
 # -------------------------------------------------------
 tab_labels = []
 for route, label in ROUTE_LABELS.items():
-    count = len(route_groups.get(route, []))
-    tab_labels.append(f"{label} ({count})")
+    rslots = route_groups.get(route, [])
+    count = len(rslots)
+    if count == 0:
+        tab_labels.append(f"{label} (0)")
+    else:
+        # Count how many are fully done (production-ready)
+        done = 0
+        for s in rslots:
+            cid = s["id"]
+            if route == "feed":
+                if cid in content_map:
+                    done += 1
+            elif route == "carousel":
+                if any(c.get("status") == "accepted" for c in carousel_map.get(cid, [])):
+                    done += 1
+            elif route in ROUTES_NEED_MUSIC:
+                if any(c.get("status") != "rejected" for c in composite_map.get(cid, [])):
+                    done += 1
+            elif route == "reel-veo":
+                if any(v.get("status") == "accepted" for v in video_map.get(cid, [])):
+                    done += 1
+        remaining = count - done
+        if remaining == 0:
+            tab_labels.append(f"{label} ({count}) \u2714")
+        else:
+            tab_labels.append(f"{label} ({remaining}/{count})")
 
 tabs = st.tabs(tab_labels)
 
@@ -977,7 +1036,33 @@ with tabs[4]:
             _render_caption_step(ss_slots, "ss_cap")
 
 # -------------------------------------------------------
-# Footer
+# What's next guidance
 # -------------------------------------------------------
 st.divider()
+
+# Compute overall status for guidance
+_slots_with_captions = sum(1 for s in slots_with_media if s["id"] in content_map)
+_slots_validated = sum(1 for s in calendar_data if s.get("status") == "validated")
+
+if _ready_count == total_slots and _slots_with_captions == total_slots:
+    st.markdown("### \u2192 What's next")
+    if _slots_validated < total_slots:
+        st.info(
+            f"All {total_slots} slots have content! "
+            f"**{_slots_validated}/{total_slots}** are validated. "
+            f"Go to **Calendar \u2192 List view** to review and **Validate** each slot, then **Publish to Instagram**."
+        )
+    else:
+        st.success(
+            f"All {total_slots} slots validated! "
+            f"Go to **Calendar** to publish or schedule them on Instagram."
+        )
+    st.page_link("pages/9_Calendar.py", label="Go to Calendar", icon=":material/calendar_month:")
+elif _ready_count < total_slots:
+    _remaining = total_slots - _ready_count
+    st.caption(
+        f"{_remaining} slot{'s' if _remaining != 1 else ''} still in progress. "
+        f"Complete all steps above, then go to **Calendar** to validate and publish."
+    )
+
 st.page_link("pages/11_Drafts_Review.py", label="Content Drafts (all content) ->", icon=":material/rate_review:")
