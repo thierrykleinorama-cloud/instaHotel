@@ -99,16 +99,16 @@ def classify_slots_by_route(slots: list[dict]) -> dict[str, list[dict]]:
         if route == "story":
             route = "feed"
         if route == "reel":
-            route = "reel-kling"
+            route = "reel-veo"
         groups.setdefault(route, []).append(s)
     return groups
 
 
 def get_video_model_for_slot(slot: dict) -> str:
     """Return the video model string for a slot's route."""
-    route = slot.get("target_format") or "reel-kling"
+    route = slot.get("target_format") or "reel-veo"
     if route == "reel":
-        route = "reel-kling"
+        route = "reel-veo"
     return ROUTE_VIDEO_MODEL.get(route, "kling-v2.1")
 
 

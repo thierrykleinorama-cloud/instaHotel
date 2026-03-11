@@ -672,7 +672,7 @@ def _render_caption_step(slots, key_prefix, exclude_carousel=True):
         if route in ("story", ""):
             route = "feed"
         if route == "reel":
-            route = "reel-kling"
+            route = "reel-veo"
         if exclude_carousel and route == "carousel":
             continue
         if route == "feed":
@@ -768,7 +768,7 @@ for s in slots_with_media:
     if route == "story":
         route = "feed"
     if route == "reel":
-        route = "reel-kling"
+        route = "reel-veo"
     if route == "feed":
         if cid in content_map:
             _ready_count += 1

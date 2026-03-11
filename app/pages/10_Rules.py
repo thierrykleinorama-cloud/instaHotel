@@ -35,7 +35,7 @@ ROUTE_LABELS = {
     "reel-slideshow": "Reel (Slideshow)",
 }
 # Backward compat: map old values to new routes
-_LEGACY_ROUTE_MAP = {"story": "feed", "reel": "reel-kling"}
+_LEGACY_ROUTE_MAP = {"story": "feed", "reel": "reel-veo"}
 FOCUS_OPTIONS = ["hotel", "destination"]
 FOCUS_LABELS = {"hotel": "Hotel", "destination": "Destination (Sitges Insider)"}
 ASPECT_RATIOS = ["1:1", "4:5", "9:16", "16:9", "3:4"]

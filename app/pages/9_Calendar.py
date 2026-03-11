@@ -123,7 +123,7 @@ ROUTE_LETTERS = {
     "reel-slideshow": "S",
 }
 # Legacy route normalization
-_LEGACY_ROUTE_MAP = {"story": "feed", "reel": "reel-kling"}
+_LEGACY_ROUTE_MAP = {"story": "feed", "reel": "reel-veo"}
 
 STATUS_COLORS = {
     "planned": "gray",
