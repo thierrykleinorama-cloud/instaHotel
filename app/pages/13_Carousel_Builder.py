@@ -29,7 +29,6 @@ from src.services.carousel_ai import (
     select_carousel_images,
     generate_carousel_captions,
 )
-from src.services.publisher import publish_carousel, upload_to_supabase_storage
 
 
 # --- HEIF support (lazy, once per session) ---
@@ -597,84 +596,40 @@ else:
             f"Cost: ${reel_cost:.4f}"
         )
 
-        dl1, dl2 = st.columns(2)
-        with dl1:
-            st.download_button(
-                "Download Reel MP4",
-                data=reel_bytes,
-                file_name="carousel_reel.mp4",
-                mime="video/mp4",
-                key="cb_dl_reel",
-            )
-        with dl2:
-            if st.button("Publish as Reel", key="cb_publish_reel"):
-                st.session_state["cb_confirm_publish_reel"] = True
+        st.download_button(
+            "Download Reel MP4",
+            data=reel_bytes,
+            file_name="carousel_reel.mp4",
+            mime="video/mp4",
+            key="cb_dl_reel",
+        )
 
-        if st.session_state.get("cb_confirm_publish_reel"):
-            st.warning("This will publish the reel to Instagram immediately.")
-            pr1, pr2 = st.columns(2)
-            with pr1:
-                if st.button("Confirm Publish Reel", type="primary", key="cb_confirm_reel_yes"):
-                    st.session_state.pop("cb_confirm_publish_reel", None)
-                    with st.spinner("Publishing reel to Instagram..."):
-                        try:
-                            from src.services.publisher import (
-                                create_ig_container,
-                                poll_container_status,
-                                publish_container,
-                            )
+        # --- Publish reel to Instagram (shared component) ---
+        from app.components.ig_publish import render_publish_to_ig
 
-                            # Upload MP4 to Supabase Storage
-                            video_url = upload_to_supabase_storage(
-                                reel_bytes,
-                                f"carousel_reel_{selected_ids[0][:8]}.mp4",
-                                "video/mp4",
-                            )
+        # Build default caption from carousel captions
+        _reel_cap_parts = []
+        _reel_es = st.session_state.get("cb_caption_es", "") or st.session_state.get("_cb_gen_caption_es", "")
+        _reel_en = st.session_state.get("cb_caption_en", "") or st.session_state.get("_cb_gen_caption_en", "")
+        _reel_fr = st.session_state.get("cb_caption_fr", "") or st.session_state.get("_cb_gen_caption_fr", "")
+        if _reel_es:
+            _reel_cap_parts.append(_reel_es)
+        if _reel_en:
+            _reel_cap_parts.append(f"\U0001f1ec\U0001f1e7\n{_reel_en}")
+        if _reel_fr:
+            _reel_cap_parts.append(f"\U0001f1eb\U0001f1f7\n{_reel_fr}")
+        _reel_default_caption = "\n\n".join(_reel_cap_parts)
+        _reel_default_hashtags = " ".join(f"#{h}" for h in st.session_state.get("cb_hashtags_list", []))
 
-                            # Build caption
-                            caption_parts = []
-                            _cap_es = st.session_state.get("cb_caption_es", "")
-                            _cap_en = st.session_state.get("cb_caption_en", "")
-                            _cap_fr = st.session_state.get("cb_caption_fr", "")
-                            if _cap_es:
-                                caption_parts.append(_cap_es)
-                            if _cap_en:
-                                caption_parts.append(f"\U0001f1ec\U0001f1e7\n{_cap_en}")
-                            if _cap_fr:
-                                caption_parts.append(f"\U0001f1eb\U0001f1f7\n{_cap_fr}")
-                            full_caption = "\n\n".join(caption_parts)
-                            _ht = st.session_state.get("cb_hashtags_list", [])
-                            if _ht:
-                                full_caption += "\n\n" + " ".join(f"#{h}" for h in _ht)
-
-                            # IG Graph API: create Reel container
-                            token = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
-                            account_id = os.environ.get("INSTAGRAM_ACCOUNT_ID", "")
-                            container_id = create_ig_container(
-                                account_id=account_id,
-                                token=token,
-                                media_url=video_url,
-                                caption=full_caption,
-                                media_type="REELS",
-                            )
-
-                            # Poll until ready (videos take longer)
-                            status = poll_container_status(
-                                container_id, token, max_wait=180,
-                            )
-                            if status != "FINISHED":
-                                st.error(f"Container processing failed: {status}")
-                            else:
-                                result = publish_container(account_id, token, container_id)
-                                post_id = result.get("id", "")
-                                st.success(f"Reel published! Post ID: {post_id}")
-
-                        except Exception as e:
-                            st.error(f"Publish failed: {e}")
-            with pr2:
-                if st.button("Cancel", key="cb_confirm_reel_no"):
-                    st.session_state.pop("cb_confirm_publish_reel", None)
-                    st.rerun()
+        render_publish_to_ig(
+            media_bytes=reel_bytes,
+            media_type="REELS",
+            filename=f"carousel_reel_{selected_ids[0][:8]}.mp4",
+            mime_type="video/mp4",
+            key_prefix="cb_reel_pub",
+            default_caption=_reel_default_caption,
+            default_hashtags=_reel_default_hashtags,
+        )
 
     st.divider()
 
@@ -759,79 +714,51 @@ else:
     title = st.text_input("Carousel title (internal)", key="cb_title",
                           placeholder="e.g., 'Top 5 Sitges Beaches'")
 
-    ac1, ac2 = st.columns(2)
+    if st.button("Save Draft", type="primary", key="cb_save",
+                  disabled=len(selected_ids) < 2):
+        draft_id = save_carousel_draft(
+            title=title or "Untitled Carousel",
+            media_ids=selected_ids,
+            caption_es=cap_es,
+            caption_en=cap_en,
+            caption_fr=cap_fr,
+            hashtags=hashtags_list,
+        )
+        if draft_id:
+            st.success(f"Draft saved! ID: {draft_id[:8]}...")
+        else:
+            st.error("Failed to save draft.")
 
-    with ac1:
-        if st.button("Save Draft", type="primary", key="cb_save",
-                      disabled=len(selected_ids) < 2):
-            draft_id = save_carousel_draft(
-                title=title or "Untitled Carousel",
-                media_ids=selected_ids,
-                caption_es=cap_es,
-                caption_en=cap_en,
-                caption_fr=cap_fr,
-                hashtags=hashtags_list,
-            )
-            if draft_id:
-                st.success(f"Draft saved! ID: {draft_id[:8]}...")
-            else:
-                st.error("Failed to save draft.")
+    # --- Publish carousel to Instagram (shared component) ---
+    from app.components.ig_publish import render_publish_carousel_to_ig
 
-    with ac2:
-        if st.button("Publish to Instagram", key="cb_publish",
-                      disabled=len(selected_ids) < 2):
-            st.session_state["cb_confirm_publish"] = True
+    # Prepare JPEG bytes for each selected image (cached via _download_thumb)
+    _carousel_jpeg_list = []
+    for _cid in selected_ids:
+        _cm = media_by_id.get(_cid)
+        if _cm and _cm.get("drive_file_id"):
+            try:
+                _carousel_jpeg_list.append(_to_jpeg_bytes(_download_thumb(_cm["drive_file_id"])))
+            except Exception:
+                pass
 
-    if st.session_state.get("cb_confirm_publish"):
-        st.warning("This will publish the carousel to Instagram immediately.")
-        cp1, cp2 = st.columns(2)
-        with cp1:
-            if st.button("Confirm Publish", type="primary", key="cb_confirm_yes"):
-                st.session_state.pop("cb_confirm_publish", None)
-                with st.spinner("Publishing carousel to Instagram..."):
-                    try:
-                        image_urls = []
-                        for mid in selected_ids:
-                            m = media_by_id.get(mid)
-                            if m and m.get("drive_file_id"):
-                                img_bytes = _download_thumb(m["drive_file_id"])
-                                # Convert to JPEG before uploading (handles HEIC)
-                                jpeg_bytes = _to_jpeg_bytes(img_bytes)
-                                url = upload_to_supabase_storage(
-                                    jpeg_bytes,
-                                    f"carousel_{mid[:8]}.jpg",
-                                    "image/jpeg",
-                                )
-                                image_urls.append(url)
+    # Build default multilingual caption
+    _car_cap_parts = []
+    if cap_es:
+        _car_cap_parts.append(cap_es)
+    if cap_en:
+        _car_cap_parts.append(f"\U0001f1ec\U0001f1e7\n{cap_en}")
+    if cap_fr:
+        _car_cap_parts.append(f"\U0001f1eb\U0001f1f7\n{cap_fr}")
+    _car_default_caption = "\n\n".join(_car_cap_parts)
+    _car_default_hashtags = " ".join(f"#{h}" for h in hashtags_list)
 
-                        caption_parts = []
-                        if cap_es:
-                            caption_parts.append(cap_es)
-                        if cap_en:
-                            caption_parts.append(f"\U0001f1ec\U0001f1e7\n{cap_en}")
-                        if cap_fr:
-                            caption_parts.append(f"\U0001f1eb\U0001f1f7\n{cap_fr}")
-                        full_caption = "\n\n".join(caption_parts)
-                        if hashtags_list:
-                            full_caption += "\n\n" + " ".join(f"#{h}" for h in hashtags_list)
-
-                        result = publish_carousel(
-                            image_urls=image_urls,
-                            caption=full_caption,
-                        )
-
-                        if result.get("success"):
-                            st.success(f"Published! Post ID: {result.get('ig_post_id')}")
-                            if result.get("ig_permalink"):
-                                st.markdown(f"[View on Instagram]({result['ig_permalink']})")
-                        else:
-                            st.error(f"Publish failed: {result.get('error')}")
-                    except Exception as e:
-                        st.error(f"Publish failed: {e}")
-        with cp2:
-            if st.button("Cancel", key="cb_confirm_no"):
-                st.session_state.pop("cb_confirm_publish", None)
-                st.rerun()
+    render_publish_carousel_to_ig(
+        image_bytes_list=_carousel_jpeg_list,
+        key_prefix="cb_car_pub",
+        default_caption=_car_default_caption,
+        default_hashtags=_car_default_hashtags,
+    )
 
 # =======================================================================
 # Saved Drafts

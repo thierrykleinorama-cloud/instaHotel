@@ -297,6 +297,18 @@ if video_result:
         key="veo_dl",
     )
 
+    # --- Publish to Instagram ---
+    from app.components.ig_publish import render_publish_to_ig
+
+    _veo_fname = f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_veo.mp4"
+    render_publish_to_ig(
+        media_bytes=video_result["video_bytes"],
+        media_type="REELS",
+        filename=_veo_fname,
+        mime_type="video/mp4",
+        key_prefix="veo_pub",
+    )
+
 # --- Previous videos ---
 st.divider()
 prev_videos = fetch_video_jobs(media["id"], limit=5)

@@ -424,6 +424,18 @@ with tab_video:
         )
         st.info("Switch to the **Music** tab to add background music to this video.")
 
+        # --- Publish to Instagram ---
+        from app.components.ig_publish import render_publish_to_ig
+
+        _ptv_fname = f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel.mp4"
+        render_publish_to_ig(
+            media_bytes=video_result["video_bytes"],
+            media_type="REELS",
+            filename=_ptv_fname,
+            mime_type="video/mp4",
+            key_prefix="cs_pub",
+        )
+
     # Show previously generated videos from DB
     prev_videos = st.session_state.get("cs_prev_videos", [])
     if prev_videos:
@@ -812,4 +824,16 @@ with tab_music:
             file_name=f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel_music.mp4",
             mime="video/mp4",
             key="mu_dl_final",
+        )
+
+        # --- Publish composite to Instagram ---
+        from app.components.ig_publish import render_publish_to_ig
+
+        _comp_fname = f"{media.get('file_name', 'video').rsplit('.', 1)[0]}_reel_music.mp4"
+        render_publish_to_ig(
+            media_bytes=vc_result["video_bytes"],
+            media_type="REELS",
+            filename=_comp_fname,
+            mime_type="video/mp4",
+            key_prefix="mu_pub",
         )

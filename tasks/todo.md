@@ -164,6 +164,9 @@
 - [ ] **Seasonal & Element Variants** — Transform photos to different seasons (summer → winter), add elements, object removal. Placeholder prompt exists: `SEASONAL_TEMPLATE` in creative_transform.py but not wired.
 - [ ] **AI Humor** — Dedicated humor scenario mode for creative transforms
 
+### AI Lab Direct Publish — DONE 2026-03-11
+- [x] **Standalone IG publish from AI Lab pages** — Shared `render_publish_to_ig()` component in `app/components/ig_publish.py`. Caption + hashtags input, confirmation dialog, upload → IG Graph API flow with cleanup. Added to: Veo Video (after video generation), Photo-to-Video (Tab 1 video + Tab 3 composite), Carousel Builder (reel export, replacing inline code). Credentials check shows warning if `INSTAGRAM_ACCESS_TOKEN` not configured.
+
 ### Publishing & Analytics (Phase 5b)
 - [ ] **Optimal posting times** — Instagram Graph API insights for best times to post
 - [ ] **Post performance table** — `post_performance` table (engagement metrics)
