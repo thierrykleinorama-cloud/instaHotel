@@ -46,6 +46,10 @@
 ## Lesson — Streamlit Cloud stale module cache
 **Regle** : Apres deploy de code modifiant des service modules, toujours Reboot l'app depuis le dashboard Streamlit Cloud.
 
+## Lesson 2026-04-10 — media_library column is file_name not filename
+**Erreur** : Review page crashed with `column media_library.filename does not exist`.
+**Regle** : The `media_library` table uses `file_name` (with underscore), not `filename`. Always check DB column names before writing queries.
+
 ## Lesson 2026-02-24 — HEIC files need pillow-heif
 **Erreur** : 6 HEIC files failed with `UnidentifiedImageError` because Pillow doesn't natively decode HEIC.
 **Regle** : Install `pillow-heif` and call `register_heif_opener()` before processing HEIC images.

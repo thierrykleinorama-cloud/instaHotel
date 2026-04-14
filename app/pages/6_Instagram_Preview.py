@@ -212,3 +212,33 @@ if result:
         st.subheader("Hashtags")
         hashtag_str = " ".join(f"#{h}" for h in hashtags)
         st.text_area("hashtags", hashtag_str, height=80, label_visibility="collapsed", key="cap_hashtags")
+
+    # --- Save as Post ---
+    st.divider()
+    st.subheader("Save as Post")
+    st.caption("Save this caption to the Review queue for later publishing.")
+
+    if st.button("Save as Post", type="primary", key="save_as_post"):
+        from src.services.posts_queries import create_post
+
+        short = result.get("short", {})
+        post_data = {
+            "post_type": "feed",
+            "media_id": media.get("id"),
+            "category": media.get("category", theme),
+            "season": season,
+            "theme_name": theme,
+            "tone": tone_key,
+            "caption_es": short.get("es", ""),
+            "caption_en": short.get("en", ""),
+            "caption_fr": short.get("fr", ""),
+            "hashtags": hashtags,
+            "status": "review",
+            "generation_source": "individual",
+        }
+        try:
+            post_id = create_post(post_data)
+            st.success(f"Post saved! Go to **Review Posts** to approve it.")
+            st.session_state["cap_last_saved_post"] = post_id
+        except Exception as e:
+            st.error(f"Save failed: {e}")

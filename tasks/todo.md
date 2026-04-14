@@ -137,7 +137,10 @@
 ## BACKLOG — Single canonical list of all open work
 **RULE: This is the ONE place for all TODOs. Always read this before proposing next steps.**
 
-### Content Production (enable batch content creation)
+### V2 UI Redesign — DONE 2026-04-10
+- [x] **V2 Redesign: Generate → Review → Publish** — Complete UI overhaul. Dropped calendar/scheduling. New `posts` table as central entity. New pages: Batch Generate (with content recipe from rules), Review Posts, Ready to Publish. Added "Save as Post" to Image Post, Reel, Carousel pages. `publish_post()` wrapper in publisher.py. Old pages archived to `_archive/`. Navigation: Create / Review / Publish / Media Library / Tools.
+
+### Content Production (enable batch content creation) — LEGACY (pre-V2)
 - [x] **Batch calendar creative workflow** — Generate scenarios for all calendar slots in one click → review/accept/reject via Drafts Review → generate videos → music → assemble. Long-running batch pattern. DONE 2026-03-06.
 - [x] **Content type routing** — Route system replaces format: feed/carousel/reel-kling/reel-veo/reel-slideshow. Each route defines full production path. Batch Pipeline routes slots by route, no manual model selector. Rules page updated with route selectbox. Calendar shows route badges + generated content preview (video players, carousel thumbnails). DB migration: carousel_drafts gets calendar_id FK. DONE 2026-03-09.
 - [x] **Production Workflow UX Redesign** — Stepper pipeline with inline review on Production Pipeline page. Gates between steps, scenarios grouped by slot with accept-one pattern, captions as final step. Calendar shows multi-step pipeline progress badges (Sc/Vid/Mus/Comp). Drafts Review renamed to Content Drafts with slot grouping toggle. Shared review component extracted to `app/components/review_controls.py`. DONE 2026-03-10.
@@ -152,6 +155,7 @@
 - [x] **Rating tooltip** — Help text on rating slider: "Your quality assessment: 1 = poor, 5 = excellent. Used to improve future AI prompts."
 - [x] **Video size in Drafts Review** — Constrained video player to 2/3 width for better fit on screen
 
+- [ ] **Batch retry failed posts** — Add "Retry Failed" button to Batch Generate results or Review page. Re-run generation for existing failed post rows instead of creating new ones. Currently must regenerate entire batch.
 - [ ] **Batch photo enhancement (Phase 2.5B)** — Bulk-enhance ~94 low-quality media (ig_quality < 5). Re-run Claude Vision, keep if +2 improvement. Add DB columns: enhanced_url, enhanced_quality, enhancement_method. Upload to `Generated/Enhanced/` in Drive. Folder already created.
 - [ ] **Auto-retarget** — Outpaint photos to 4:5 (feed) and 9:16 (story/reel) in batch
 

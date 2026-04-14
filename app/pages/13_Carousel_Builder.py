@@ -714,20 +714,59 @@ else:
     title = st.text_input("Carousel title (internal)", key="cb_title",
                           placeholder="e.g., 'Top 5 Sitges Beaches'")
 
-    if st.button("Save Draft", type="primary", key="cb_save",
-                  disabled=len(selected_ids) < 2):
-        draft_id = save_carousel_draft(
-            title=title or "Untitled Carousel",
-            media_ids=selected_ids,
-            caption_es=cap_es,
-            caption_en=cap_en,
-            caption_fr=cap_fr,
-            hashtags=hashtags_list,
-        )
-        if draft_id:
-            st.success(f"Draft saved! ID: {draft_id[:8]}...")
-        else:
-            st.error("Failed to save draft.")
+    sc1, sc2 = st.columns(2)
+    with sc1:
+        if st.button("Save Draft", type="primary", key="cb_save",
+                      disabled=len(selected_ids) < 2, use_container_width=True):
+            draft_id = save_carousel_draft(
+                title=title or "Untitled Carousel",
+                media_ids=selected_ids,
+                caption_es=cap_es,
+                caption_en=cap_en,
+                caption_fr=cap_fr,
+                hashtags=hashtags_list,
+            )
+            if draft_id:
+                st.success(f"Draft saved! ID: {draft_id[:8]}...")
+                st.session_state["cb_last_draft_id"] = draft_id
+            else:
+                st.error("Failed to save draft.")
+
+    with sc2:
+        _can_save_post = len(selected_ids) >= 2 and (cap_es or cap_en)
+        if st.button("Save as Post", key="cb_save_post",
+                      disabled=not _can_save_post, use_container_width=True):
+            from src.services.posts_queries import create_post
+
+            # Save draft first if not already saved
+            _draft_id = st.session_state.get("cb_last_draft_id")
+            if not _draft_id:
+                _draft_id = save_carousel_draft(
+                    title=title or "Untitled Carousel",
+                    media_ids=selected_ids,
+                    caption_es=cap_es,
+                    caption_en=cap_en,
+                    caption_fr=cap_fr,
+                    hashtags=hashtags_list,
+                )
+
+            if _draft_id:
+                post_id = create_post({
+                    "post_type": "carousel",
+                    "media_id": selected_ids[0] if selected_ids else None,
+                    "category": media_by_id.get(selected_ids[0], {}).get("category", ""),
+                    "season": st.session_state.get("cb_season", ""),
+                    "caption_es": cap_es,
+                    "caption_en": cap_en,
+                    "caption_fr": cap_fr,
+                    "hashtags": hashtags_list,
+                    "carousel_draft_id": _draft_id,
+                    "status": "review",
+                    "generation_source": "individual",
+                })
+                st.success("Post saved! Go to **Review Posts** to approve it.")
+            else:
+                st.error("Failed to save carousel draft.")
 
     # --- Publish carousel to Instagram (shared component) ---
     from app.components.ig_publish import render_publish_carousel_to_ig

@@ -29,6 +29,7 @@ TABLE_GENERATED_SCENARIOS = "generated_scenarios"
 TABLE_GENERATED_MUSIC = "generated_music"
 TABLE_CAROUSEL_DRAFTS = "carousel_drafts"
 TABLE_COST_LOG = "cost_log"
+TABLE_POSTS = "posts"
 
 
 def _get_secret(key: str) -> Optional[str]:

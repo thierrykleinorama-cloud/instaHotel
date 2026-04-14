@@ -19,7 +19,7 @@ sidebar_css()
 # Sidebar — DB status
 with st.sidebar:
     st.title("InstaHotel")
-    st.caption("Media Library Explorer")
+    st.caption("Instagram Content Studio")
     st.divider()
 
     if test_connection():
@@ -37,16 +37,24 @@ with st.sidebar:
     st.caption("Navigate using pages in the sidebar above.")
 
 # Main page
-page_title("Welcome", "Media Library Explorer")
+page_title("Welcome", "Instagram Content Studio")
 
 st.markdown("""
-Use the sidebar to navigate between views:
+### 3-step workflow
 
-- **Stats** — Overview, distribution charts, gap alerts
-- **Gallery** — Browse and filter all media
-- **Image Details** — View full-size image and correct AI tags
-- **Video Details** — Browse videos, view scenes, and correct tags
-- **AI Lab** — Test AI transformations on your media
-- **Calendar** — Editorial posting calendar with scored media assignments
-- **Rules** — Configure weekly posting rules and seasonal themes
+**1. Create** — Generate Instagram content from your media library
+- **Batch Generate** — Create multiple posts at once using your content recipe
+- **Image Post** — Pick a photo and generate captions (ES/EN/FR)
+- **Reel** — Create video reels with scenarios, music, and compositing
+- **Carousel** — Build multi-image carousel posts
+
+**2. Review** — Approve or discard generated posts with feedback
+
+**3. Publish** — Send approved posts to Instagram one by one
+
+---
+
+**Media Library** — Browse, filter, and inspect your 530+ hotel photos and videos
+
+**Tools** — Content Strategy, Cost Dashboard, Prompt Viewer
 """)

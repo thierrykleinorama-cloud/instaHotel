@@ -393,7 +393,7 @@ with tab_video:
                     except Exception as _de:
                         st.warning(f"Drive upload failed (video saved to Supabase): {_de}")
                     _provider = VIDEO_MODELS[video_model].get("provider", "replicate")
-                    save_video_job(
+                    _job_row = save_video_job(
                         source_media_id=media_id,
                         video_url=video_url,
                         prompt=motion_prompt,
@@ -402,6 +402,8 @@ with tab_video:
                         params={"duration": duration, "aspect_ratio": aspect_ratio, "model": video_model},
                         drive_file_id=_drive_fid,
                     )
+                    if _job_row and _job_row.get("id"):
+                        st.session_state["ptv_last_video_job_id"] = _job_row["id"]
                     # Refresh prev_videos list
                     st.session_state["cs_prev_videos"] = fetch_video_jobs(media_id, limit=5)
                 except Exception:
@@ -713,7 +715,7 @@ with tab_music:
                             st.caption(f"Saved to Drive: Generated/Music/{_mu_fname}")
                         except Exception as _de:
                             st.warning(f"Drive upload failed: {_de}")
-                        save_music_job(
+                        _mu_job = save_music_job(
                             source_media_id=media_id,
                             audio_url="",  # no Supabase URL for music
                             prompt=music_prompt,
@@ -721,6 +723,8 @@ with tab_music:
                             params={"duration": mu_duration, "model": music_model, "temperature": temperature},
                             drive_file_id=_mu_drive_fid,
                         )
+                        if _mu_job and _mu_job.get("id"):
+                            st.session_state["mu_last_music_id"] = _mu_job["id"]
                     except Exception:
                         pass  # non-critical
                 except Exception as e:
@@ -837,3 +841,56 @@ with tab_music:
             mime_type="video/mp4",
             key_prefix="mu_pub",
         )
+
+# -------------------------------------------------------
+# Save as Post (available from any tab once content exists)
+# -------------------------------------------------------
+st.divider()
+st.subheader("Save as Post")
+
+# Detect what's available
+_has_video = bool(st.session_state.get("ptv_video_bytes") or st.session_state.get("mu_composite_result"))
+_has_scenario = bool(st.session_state.get("cs_result"))
+
+if _has_video:
+    st.caption("Save this reel to the Review queue for later publishing.")
+    if st.button("Save as Post", type="primary", key="reel_save_post"):
+        from src.services.posts_queries import create_post
+
+        # Determine post_type from model used
+        _model_key = st.session_state.get("ptv_model", DEFAULT_VIDEO_MODEL)
+        if "veo" in _model_key.lower():
+            _post_type = "reel-veo"
+        else:
+            _post_type = "reel-kling"
+
+        # Find video job ID
+        _video_job_id = st.session_state.get("ptv_last_video_job_id")
+
+        # Find accepted scenario ID
+        _scenario_id = st.session_state.get("cs_accepted_scenario_id")
+
+        # Find music ID
+        _music_id = st.session_state.get("mu_last_music_id")
+
+        post_data = {
+            "post_type": _post_type,
+            "media_id": media.get("id"),
+            "category": media.get("category", ""),
+            "season": st.session_state.get("ptv_season", ""),
+            "video_job_id": _video_job_id,
+            "scenario_id": _scenario_id,
+            "music_id": _music_id,
+            "status": "review",
+            "generation_source": "individual",
+        }
+        try:
+            post_id = create_post(post_data)
+            st.success("Post saved! Go to **Review Posts** to approve it.")
+            st.caption("Note: Captions will be generated separately — or add them in the Review page.")
+        except Exception as e:
+            st.error(f"Save failed: {e}")
+elif _has_scenario:
+    st.info("Generate a video first, then save as post.")
+else:
+    st.info("Generate scenarios and video to save as a post.")

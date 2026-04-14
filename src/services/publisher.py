@@ -583,7 +583,270 @@ def publish_slot(
 
 
 # ---------------------------------------------------------------------------
-# Batch publish
+# Publish from V2 posts table
+# ---------------------------------------------------------------------------
+
+def _resolve_post_caption(
+    post: dict,
+    multilingual: bool = True,
+    variant: str = "short",
+    language: str = "es",
+) -> str:
+    """Build caption string from a posts row (captions stored directly on row)."""
+    if multilingual:
+        parts = []
+        for lang, flag in [("es", ""), ("en", "\U0001f1ec\U0001f1e7"), ("fr", "\U0001f1eb\U0001f1f7")]:
+            text = post.get(f"caption_{lang}", "")
+            if text:
+                parts.append(f"{flag}\n{text}" if flag else text)
+        if not parts:
+            raise ValueError(f"No captions on post {post.get('id')}")
+        caption_text = "\n\n".join(parts)
+    else:
+        caption_text = post.get(f"caption_{language}", "")
+        if not caption_text:
+            # Fallback to ES
+            caption_text = post.get("caption_es", "")
+        if not caption_text:
+            raise ValueError(f"No caption_{language} on post {post.get('id')}")
+
+    hashtags = post.get("hashtags") or []
+    if hashtags:
+        tag_str = " ".join(f"#{h}" for h in hashtags)
+        caption_text = f"{caption_text}\n\n{tag_str}"
+    return caption_text
+
+
+def publish_post(
+    post: dict,
+    multilingual: bool = True,
+    variant: str = "short",
+    language: str = "es",
+) -> dict:
+    """
+    Publish a single post from the V2 posts table to Instagram.
+
+    Handles feed images, reels (video), and carousels.
+    Updates the posts table on success/failure.
+
+    Returns: {success, ig_post_id, ig_permalink, error}
+    """
+    from src.services.posts_queries import (
+        update_post_publish_info,
+        update_post_publish_error,
+    )
+    from src.services.google_drive import download_file_bytes
+
+    token = _get_ig_token()
+    account_id = _get_ig_account_id()
+    post_id = post["id"]
+    post_type = post["post_type"]
+    storage_filenames = []
+
+    try:
+        caption = _resolve_post_caption(post, multilingual, variant, language)
+
+        # --- Carousel ---
+        if post_type == "carousel":
+            return _publish_carousel_post(post, caption, storage_filenames)
+
+        # --- Reel (any model) ---
+        if post_type.startswith("reel"):
+            return _publish_reel_post(post, caption, storage_filenames)
+
+        # --- Feed (image post) ---
+        media = _fetch_post_media(post)
+        drive_file_id = media.get("drive_file_id")
+        if not drive_file_id:
+            raise ValueError("Source media has no drive_file_id")
+
+        file_bytes = download_file_bytes(drive_file_id)
+        fname = f"publish_{post_id[:8]}.jpg"
+        public_url = upload_to_supabase_storage(file_bytes, fname, "image/jpeg")
+        storage_filenames.append(public_url.split(f"{SUPABASE_STORAGE_BUCKET}/")[-1])
+
+        container_id = create_ig_container(
+            account_id, token, public_url, caption, media_type="IMAGE",
+        )
+        poll_container_status(container_id, token, max_wait=60)
+        result = publish_container(account_id, token, container_id)
+        ig_post_id = result.get("id")
+        permalink = get_post_permalink(ig_post_id, token) if ig_post_id else None
+
+        update_post_publish_info(post_id, ig_post_id, permalink)
+        return {"success": True, "ig_post_id": ig_post_id, "ig_permalink": permalink}
+
+    except Exception as e:
+        update_post_publish_error(post_id, str(e))
+        return {"success": False, "error": str(e)}
+
+    finally:
+        for sf in storage_filenames:
+            try:
+                delete_from_supabase_storage(sf)
+            except Exception:
+                pass
+
+
+def _fetch_post_media(post: dict) -> dict:
+    """Fetch media_library row for a post's media_id."""
+    from src.database import get_supabase, TABLE_MEDIA_LIBRARY
+    media_id = post.get("media_id")
+    if not media_id:
+        raise ValueError("Post has no media_id")
+    result = (
+        get_supabase()
+        .table(TABLE_MEDIA_LIBRARY)
+        .select("*")
+        .eq("id", media_id)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise ValueError(f"Media {media_id} not found")
+    return result.data[0]
+
+
+def _publish_reel_post(post: dict, caption: str, storage_filenames: list) -> dict:
+    """Publish a reel post — fetch video from creative_jobs or composite."""
+    from src.services.posts_queries import (
+        update_post_publish_info,
+        update_post_publish_error,
+    )
+    from src.services.google_drive import download_file_bytes
+
+    token = _get_ig_token()
+    account_id = _get_ig_account_id()
+    post_id = post["id"]
+
+    # Find the video URL: prefer composite (video+music), fallback to raw video
+    video_url = _get_reel_video_url(post)
+    if not video_url:
+        raise ValueError("No video found for reel post (no video_job_id or result_url)")
+
+    # Download video bytes (from Drive URL or direct URL)
+    if "drive.google.com" in video_url or len(video_url) < 60:
+        # It's a Drive file ID
+        file_bytes = download_file_bytes(video_url)
+    else:
+        # It's a direct URL (e.g., Replicate output)
+        import httpx as _httpx
+        resp = _httpx.get(video_url, timeout=120, follow_redirects=True)
+        resp.raise_for_status()
+        file_bytes = resp.content
+
+    fname = f"publish_{post_id[:8]}.mp4"
+    public_url = upload_to_supabase_storage(file_bytes, fname, "video/mp4")
+    storage_filenames.append(public_url.split(f"{SUPABASE_STORAGE_BUCKET}/")[-1])
+
+    container_id = create_ig_container(
+        account_id, token, public_url, caption, media_type="REELS",
+    )
+    poll_container_status(container_id, token, max_wait=180)
+    result = publish_container(account_id, token, container_id)
+    ig_post_id = result.get("id")
+    permalink = get_post_permalink(ig_post_id, token) if ig_post_id else None
+
+    update_post_publish_info(post_id, ig_post_id, permalink)
+    return {"success": True, "ig_post_id": ig_post_id, "ig_permalink": permalink}
+
+
+def _get_reel_video_url(post: dict) -> Optional[str]:
+    """Get the publishable video URL for a reel post.
+    For Kling/slideshow: use composite (video+music) drive_file_id.
+    For Veo: use raw video result_url (has native audio).
+    """
+    from src.database import get_supabase, TABLE_CREATIVE_JOBS
+
+    video_job_id = post.get("video_job_id")
+    if not video_job_id:
+        return None
+
+    result = (
+        get_supabase()
+        .table(TABLE_CREATIVE_JOBS)
+        .select("result_url, drive_file_id, job_type")
+        .eq("id", video_job_id)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        return None
+
+    job = result.data[0]
+    # Prefer drive_file_id (uploaded to Drive), fallback to result_url
+    return job.get("drive_file_id") or job.get("result_url")
+
+
+def _publish_carousel_post(post: dict, caption: str, storage_filenames: list) -> dict:
+    """Publish a carousel post — fetch images from carousel_drafts."""
+    from src.services.posts_queries import (
+        update_post_publish_info,
+        update_post_publish_error,
+    )
+    from src.services.google_drive import download_file_bytes
+    from src.database import get_supabase, TABLE_CAROUSEL_DRAFTS, TABLE_MEDIA_LIBRARY
+
+    post_id = post["id"]
+    carousel_draft_id = post.get("carousel_draft_id")
+    if not carousel_draft_id:
+        raise ValueError("Carousel post has no carousel_draft_id")
+
+    # Fetch the carousel draft to get media_ids
+    draft = (
+        get_supabase()
+        .table(TABLE_CAROUSEL_DRAFTS)
+        .select("media_ids")
+        .eq("id", carousel_draft_id)
+        .limit(1)
+        .execute()
+    )
+    if not draft.data:
+        raise ValueError(f"Carousel draft {carousel_draft_id} not found")
+
+    media_ids = draft.data[0].get("media_ids", [])
+    if len(media_ids) < 2:
+        raise ValueError("Carousel needs at least 2 images")
+
+    # Fetch media records to get drive_file_ids
+    media_records = (
+        get_supabase()
+        .table(TABLE_MEDIA_LIBRARY)
+        .select("id, drive_file_id")
+        .in_("id", media_ids)
+        .execute()
+    ).data
+    drive_map = {m["id"]: m["drive_file_id"] for m in media_records}
+
+    # Download and upload each image to get public URLs
+    image_urls = []
+    for mid in media_ids:
+        dfid = drive_map.get(mid)
+        if not dfid:
+            continue
+        img_bytes = download_file_bytes(dfid)
+        fname = f"carousel_{post_id[:8]}_{len(image_urls)}.jpg"
+        pub_url = upload_to_supabase_storage(img_bytes, fname, "image/jpeg")
+        storage_filenames.append(pub_url.split(f"{SUPABASE_STORAGE_BUCKET}/")[-1])
+        image_urls.append(pub_url)
+
+    if len(image_urls) < 2:
+        raise ValueError("Could not resolve enough carousel images")
+
+    result = publish_carousel(image_urls, caption)
+
+    if result.get("success"):
+        update_post_publish_info(
+            post_id, result.get("ig_post_id"), result.get("ig_permalink"),
+        )
+    else:
+        update_post_publish_error(post_id, result.get("error", "Unknown carousel error"))
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Batch publish (legacy calendar-based)
 # ---------------------------------------------------------------------------
 
 def batch_publish_validated(
