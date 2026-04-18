@@ -212,9 +212,9 @@ def _generate_feed_post(post_id, media, season, tone, model, include_image):
 
     result = generate_captions(
         media=media,
-        theme=media.get("category", "room"),
+        theme=media.get("description_en", "") or media.get("category", "room"),
         season=season,
-        cta_type="link_bio",
+        cta_type="auto",
         include_image=include_image,
         image_base64=image_b64,
         model=model,
@@ -267,7 +267,7 @@ def _generate_carousel_post(post_id, media, all_media, season, tone, model, batc
     # Generate captions
     try:
         cap_result = generate_carousel_captions(
-            theme=category,
+            theme=media.get("description_en", "") or category,
             image_descriptions=[m.get("description_fr", "") for m in cat_media[:5]],
             model=model,
         )
@@ -351,16 +351,21 @@ def _generate_reel_post(post_id, media, post_type, season, tone, model):
     # Auto-pick best scenario (first one)
     chosen = scenarios[0]
     motion_prompt = chosen.get("motion_prompt", chosen.get("description", ""))
+    char_ids = chosen.get("characters_used", []) or []
 
-    # Step 3: Generate video
+    # Step 3: Generate video (with character references if scenario uses them)
     if post_type == "reel-veo":
-        video_result = _generate_veo_video(image_bytes, motion_prompt)
+        video_result = _generate_veo_video(
+            image_bytes, motion_prompt,
+            reference_character_ids=char_ids if char_ids else None,
+        )
     else:  # reel-kling
         video_result = photo_to_video(
             image_bytes=image_bytes,
             prompt=motion_prompt,
             duration=5,
             aspect_ratio="9:16",
+            reference_character_ids=char_ids if char_ids else None,
         )
 
     total_cost += video_result.get("_cost", {}).get("cost_usd", 0)
@@ -409,15 +414,23 @@ def _generate_reel_post(post_id, media, post_type, season, tone, model):
         except Exception:
             pass  # Music is optional, don't fail the whole post
 
-    # Step 5: Generate captions for the reel
+    # Step 5: Generate captions for the reel (using scenario context)
     try:
         from src.services.caption_generator import generate_captions
 
+        caption_hook = chosen.get("caption_hook", "")
+        scenario_desc = chosen.get("description", "")
+        reel_context = ""
+        if caption_hook:
+            reel_context += f"Opening hook: {caption_hook}\n"
+        if scenario_desc:
+            reel_context += f"Video concept: {scenario_desc}\n"
+
         cap_result = generate_captions(
             media=media,
-            theme=media.get("category", "room"),
+            theme=reel_context if reel_context else media.get("description_en", "") or media.get("category", "room"),
             season=season,
-            cta_type="link_bio",
+            cta_type="auto",
             include_image=False,
             model=model,
             tone=tone,
@@ -441,18 +454,18 @@ def _generate_reel_post(post_id, media, post_type, season, tone, model):
     })
 
 
-def _generate_veo_video(image_bytes, prompt):
+def _generate_veo_video(image_bytes, prompt, reference_character_ids=None):
     """Generate video using Veo 3.1."""
-    from src.services.veo_generator import generate_veo_video
+    from src.services.veo_generator import veo_photo_to_video
 
-    result = generate_veo_video(
+    return veo_photo_to_video(
         image_bytes=image_bytes,
         prompt=prompt,
-        duration=6,
+        duration=8 if reference_character_ids else 6,
         aspect_ratio="9:16",
         model="veo-3.1-fast",
+        reference_character_ids=reference_character_ids,
     )
-    return result
 
 
 # -----------------------------------------------------------
@@ -493,11 +506,11 @@ def estimate_batch_cost(recipe: list[dict], count: int) -> dict:
 
     # Cost estimates per type
     UNIT_COSTS = {
-        "feed": 0.01,           # captions only
-        "carousel": 0.02,      # captions + image selection
-        "reel-kling": 0.55,    # scenario + Kling video + music + captions
-        "reel-veo": 0.20,      # scenario + Veo fast + captions
-        "reel-slideshow": 0.05, # slideshow (free) + music + captions
+        "feed": 0.03,           # captions only
+        "carousel": 0.05,      # captions + image selection
+        "reel-kling": 0.80,    # scenario + Kling V3 Omni video + music + captions
+        "reel-veo": 1.25,      # scenario + Veo 3.1 Fast 8s + captions
+        "reel-slideshow": 0.10, # slideshow (free) + music + captions
     }
 
     total = 0
