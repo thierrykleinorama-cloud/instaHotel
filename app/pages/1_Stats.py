@@ -81,14 +81,14 @@ for cat, count in cat_counts.items():
         gaps_found = True
 
 # Seasons with no photos for any category
-all_seasons = {"printemps", "ete", "automne", "hiver"}
+all_seasons = {"spring", "summer", "autumn", "winter"}
 for cat in df["category"].unique():
     cat_df = df[df["category"] == cat]
     cat_seasons = set()
     for s_list in cat_df["season"].dropna():
         if isinstance(s_list, list):
             cat_seasons.update(s_list)
-    missing = all_seasons - cat_seasons - {"toute_saison"}
+    missing = all_seasons - cat_seasons - {"any_season"}
     for ms in missing:
         st.warning(f"**{cat}**: no photos tagged for season '{ms}'")
         gaps_found = True

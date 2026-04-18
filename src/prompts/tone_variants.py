@@ -1,67 +1,67 @@
 """
 Tone variant definitions for caption generation.
-Each tone provides a French instruction injected into the user prompt
+Each tone provides an English instruction injected into the user prompt
 and an optional system addendum that adjusts the AI's personality.
 """
 
 TONES = {
     "default": {
-        "label": "Default (Chaleureux)",
+        "label": "Default (Warm)",
         "description": "Warm, authentic, welcoming — the hotel's natural voice",
-        "instruction_fr": "Ton : chaleureux, authentique, jamais corporate.",
+        "instruction": "Tone: warm, authentic, never corporate.",
         "system_addendum": "",
     },
     "luxe": {
-        "label": "Luxe & Raffiné",
+        "label": "Luxe & Refined",
         "description": "Elegant, sophisticated, understated luxury",
-        "instruction_fr": (
-            "Ton : luxe et raffiné. Vocabulaire soigné, évoque l'élégance, "
-            "le raffinement et l'exclusivité. Jamais tape-à-l'œil — "
-            "c'est un luxe discret, Art Nouveau, méditerranéen."
+        "instruction": (
+            "Tone: luxurious and refined. Polished vocabulary, evoking elegance, "
+            "refinement, and exclusivity. Never flashy — this is quiet luxury, "
+            "Art Nouveau, Mediterranean."
         ),
         "system_addendum": (
-            "Tu écris comme un rédacteur de magazine haut de gamme. "
-            "Phrases élégantes, adjectifs précis, rythme posé."
+            "You write like a high-end magazine editor. "
+            "Elegant sentences, precise adjectives, measured rhythm."
         ),
     },
     "casual": {
         "label": "Casual & Fun",
         "description": "Relaxed, friendly, approachable — like talking to a friend",
-        "instruction_fr": (
-            "Ton : décontracté et fun. Comme si tu parlais à un ami. "
-            "Phrases courtes, langage simple, énergie positive. "
-            "Tu peux utiliser des expressions familières (sans vulgarité)."
+        "instruction": (
+            "Tone: casual and fun. As if talking to a friend. "
+            "Short sentences, simple language, positive energy. "
+            "Familiar expressions are welcome (without vulgarity)."
         ),
         "system_addendum": (
-            "Tu écris comme un ami qui partage ses bons plans. "
-            "Naturel, spontané, zéro formalisme."
+            "You write like a friend sharing tips. "
+            "Natural, spontaneous, zero formalism."
         ),
     },
     "humorous": {
-        "label": "Humour & Décalé",
+        "label": "Humorous & Offbeat",
         "description": "Witty, playful, unexpected twists — makes people smile",
-        "instruction_fr": (
-            "Ton : humoristique et décalé. Jeux de mots bienvenus, "
-            "comparaisons inattendues, autodérision légère. "
-            "L'objectif : faire sourire. Reste bienveillant."
+        "instruction": (
+            "Tone: humorous and offbeat. Wordplay welcome, "
+            "unexpected comparisons, light self-deprecation. "
+            "Goal: make people smile. Stay kind."
         ),
         "system_addendum": (
-            "Tu es un copywriter créatif avec un sens de l'humour fin. "
-            "Tu trouves l'angle inattendu, le twist qui fait sourire. "
-            "Jamais méchant, toujours malin."
+            "You are a creative copywriter with sharp humor. "
+            "You find the unexpected angle, the twist that makes people smile. "
+            "Never mean, always clever."
         ),
     },
     "romantic": {
-        "label": "Romantique & Poétique",
+        "label": "Romantic & Poetic",
         "description": "Dreamy, sensory, evocative — ideal for couples/sunsets/architecture",
-        "instruction_fr": (
-            "Ton : romantique et poétique. Évoque les sens (lumière, parfums, textures). "
-            "Phrases qui font rêver, métaphores douces. "
-            "Idéal pour les couchers de soleil, l'architecture, les moments à deux."
+        "instruction": (
+            "Tone: romantic and poetic. Evoke the senses (light, scents, textures). "
+            "Sentences that inspire dreams, soft metaphors. "
+            "Ideal for sunsets, architecture, moments together."
         ),
         "system_addendum": (
-            "Tu écris comme un poète amoureux de la Méditerranée. "
-            "Chaque mot peint une image, chaque phrase invite au voyage."
+            "You write like a poet in love with the Mediterranean. "
+            "Every word paints an image, every sentence invites a journey."
         ),
     },
 }
@@ -75,8 +75,8 @@ TONE_LABELS_REVERSE = {v: k for k, v in TONE_LABELS.items()}
 
 
 def get_tone_instruction(tone_key: str) -> str:
-    """Return the French tone instruction line for the given tone key."""
-    return TONES.get(tone_key, TONES["default"])["instruction_fr"]
+    """Return the English tone instruction line for the given tone key."""
+    return TONES.get(tone_key, TONES["default"])["instruction"]
 
 
 def get_tone_system_addendum(tone_key: str) -> str:

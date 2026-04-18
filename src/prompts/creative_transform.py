@@ -56,57 +56,57 @@ WHAT WORKS ON INSTAGRAM
 # Photo-to-Video: motion prompt generation
 # ---------------------------------------------------------------------------
 
-MOTION_PROMPT_SYSTEM = """Tu es un directeur artistique spécialisé en vidéo pour Instagram Reels.
-Tu transformes une description de photo d'hôtel en un prompt vidéo pour un modèle IA (Kling, Veo, etc.).
+MOTION_PROMPT_SYSTEM = """You are an art director specialized in video for Instagram Reels.
+You transform a hotel photo description into a video prompt for an AI model (Kling, Veo, etc.).
 
-L'hôtel est le Noucentista, un hôtel boutique Art Nouveau à Sitges (Barcelone).
-Ambiance méditerranéenne, chaleureuse. Des chats vivent à l'hôtel et sont les mascottes officieuses.
+The hotel is the Noucentista, a boutique Art Nouveau hotel in Sitges (Barcelona).
+Mediterranean, warm atmosphere. Cats live in the hotel and are the unofficial mascots.
 
-RÈGLE CRITIQUE — Ce qui fait une bonne vidéo :
-- L'ACTION prime sur le mouvement de caméra. "Un chat entre et se couche sur le lit" > "slow dolly forward".
-- Toujours inclure un SUJET ANIMÉ : un chat, une personne, un objet qui bouge, de l'eau, du vent, de la lumière qui change drastiquement.
-- Un simple zoom ou pan sur une image statique = vidéo ennuyeuse et inutilisable.
-- Rester dans le cadre de la photo : NE PAS demander de mouvements qui révèlent des zones hors-champ (pas de pullback montrant des bâtiments, pas de crane-up révélant un panorama absent de la photo).
-- Décrire ce qui SE PASSE, pas ce qui est déjà visible sur l'image statique.
+CRITICAL RULE — What makes a good video:
+- ACTION trumps camera movement. "A cat enters and lies down on the bed" > "slow dolly forward".
+- Always include an ANIMATED SUBJECT: a cat, a person, a moving object, water, wind, dramatically changing light.
+- A simple zoom or pan on a static image = boring and unusable video.
+- Stay within the frame of the photo: DO NOT request movements that reveal off-camera areas (no pullback revealing buildings, no crane-up revealing a panorama not in the photo).
+- Describe what IS HAPPENING, not what is already visible in the static image.
 
-RÉALISME — la vidéo doit ressembler à un VRAI tournage, sauf si le brief créatif indique le contraire :
-- Les proportions des objets doivent rester réalistes (une tasse de café = taille normale sur la table, pas géante).
-- Préférer des mouvements subtils et naturels : un rideau qui bouge doucement > un rideau qui vole comme dans une tempête.
-- PAS d'effets exagérés ou surnaturels. Mots INTERDITS dans le prompt, sauf si l'intention non réaliste est assumée et voulue 
-(ex: humour, chats IA, éléments fantaisistes ou animation stylisée) 
-: "magical", "ethereal", "dreamy glow", "sparkling", "scintillating", "glowing particles", "mystical". Ces mots produisent des vidéos artificielles.
-- Le mot "cinematic" est OK. "Natural lighting", "soft breeze", "gentle movement" = bon.
-- La physique doit être respectée : l'eau coule vers le bas, la lumière vient d'une source réaliste, les objets ont un poids normal.
-- EXCEPTION : si le brief créatif mentionne humour, chats IA, éléments fantaisistes ou animation stylisée — le réalisme est relaxé et la créativité surréaliste est encouragée.
+REALISM — the video must look like a REAL shoot, unless the creative brief says otherwise:
+- Object proportions must stay realistic (a coffee cup = normal size on the table, not giant).
+- Prefer subtle, natural movements: a curtain gently moving > a curtain flying like in a storm.
+- NO exaggerated or supernatural effects. FORBIDDEN words in the prompt, unless the non-realistic intent is assumed and desired
+(e.g. humor, AI cats, fanciful elements or stylized animation)
+: "magical", "ethereal", "dreamy glow", "sparkling", "scintillating", "glowing particles", "mystical". These words produce artificial videos.
+- The word "cinematic" is OK. "Natural lighting", "soft breeze", "gentle movement" = good.
+- Physics must be respected: water flows down, light comes from a realistic source, objects have normal weight.
+- EXCEPTION: if the creative brief mentions humor, AI cats, fanciful elements or stylized animation — realism is relaxed and surreal creativity is encouraged.
 
-Réponds UNIQUEMENT avec le prompt en anglais (pas de JSON, pas de markdown).
-Maximum 150 mots."""
+Respond ONLY with the prompt in English (no JSON, no markdown).
+Maximum 150 words."""
 
-MOTION_PROMPT_TEMPLATE = """Génère un prompt vidéo pour cette photo d'hôtel.
+MOTION_PROMPT_TEMPLATE = """Generate a video prompt for this hotel photo.
 
-Contexte hôtel :
+Hotel context:
 {hotel_context}
 
-Photo :
-- Catégorie : {category}
-- Sous-catégorie : {subcategory}
-- Ambiance : {ambiance}
-- Éléments visibles : {elements}
-- Description : {description_en}
+Photo:
+- Category: {category}
+- Subcategory: {subcategory}
+- Ambiance: {ambiance}
+- Visible elements: {elements}
+- Description: {description_en}
 
-Paramètres vidéo :
-- Durée : {duration} secondes
-- Format : {aspect_ratio}
+Video parameters:
+- Duration: {duration} seconds
+- Format: {aspect_ratio}
 
-Contexte créatif : {creative_brief}
+Creative context: {creative_brief}
 
-Le prompt doit :
-1. Décrire une ACTION CONCRÈTE qui se passe dans la scène (un chat qui entre, une personne qui s'assoit, du vent qui soulève les rideaux, de l'eau qui éclabousse, de la lumière qui change radicalement)
-2. Le mouvement de caméra est SECONDAIRE — il accompagne l'action, il ne la remplace pas
-3. Rester DANS le cadre visible de la photo — ne jamais révéler de zones hors-champ (pas de pullback, pas de crane-up montrant des bâtiments absents de la photo)
-4. Être en anglais, optimisé pour Kling v2.1 / Veo 3
-5. Si le brief créatif mentionne un scénario, l'intégrer comme action principale
-6. RÉALISME par défaut : la vidéo doit ressembler à un vrai tournage smartphone/caméra. Pas de lumière surnaturelle, pas d'objets qui changent de taille, pas de textures plastiques. Ne jamais utiliser les mots "magical", "ethereal", "sparkling", "scintillating", "glowing". SAUF si le brief créatif demande explicitement un effet fantaisiste (humour, chats IA, éléments animés décoratifs)."""
+The prompt must:
+1. Describe a CONCRETE ACTION happening in the scene (a cat entering, a person sitting down, wind lifting curtains, water splashing, light changing dramatically)
+2. Camera movement is SECONDARY — it accompanies the action, it doesn't replace it
+3. Stay WITHIN the visible frame of the photo — never reveal off-camera areas (no pullback, no crane-up showing buildings not in the photo)
+4. Be in English, optimized for Kling v2.1 / Veo 3
+5. If the creative brief mentions a scenario, integrate it as the main action
+6. REALISM by default: the video should look like a real smartphone/camera shoot. No supernatural light, no objects changing size, no plastic textures. Never use the words "magical", "ethereal", "sparkling", "scintillating", "glowing". EXCEPT if the creative brief explicitly asks for a fanciful effect (humor, AI cats, animated decorative elements)."""
 
 
 # ---------------------------------------------------------------------------
@@ -114,16 +114,16 @@ Le prompt doit :
 # ---------------------------------------------------------------------------
 
 AMBIANCE_MOTION_MAP = {
-    "chaleureux": "warm slow dolly forward, soft natural light",
-    "lumineux": "gentle crane up revealing the bright space, natural light reflections on surfaces",
-    "intime": "slow push-in creating intimacy, shallow depth of field rack focus",
-    "méditerranéen": "slow pan across, Mediterranean breeze moving plants and curtains",
-    "élégant": "smooth tracking shot, Art Nouveau details catching natural light",
+    "warm": "warm slow dolly forward, soft natural light",
+    "bright": "gentle crane up revealing the bright space, natural light reflections on surfaces",
+    "cozy": "slow push-in creating intimacy, shallow depth of field rack focus",
+    "mediterranean": "slow pan across, Mediterranean breeze moving plants and curtains",
+    "elegant": "smooth tracking shot, Art Nouveau details catching natural light",
     "zen": "ultra-slow drift, water ripples, calm atmosphere",
-    "romantique": "slow orbit, soft natural background blur, warm tones",
-    "convivial": "lively dolly through space, subtle life movement in background",
-    "luxueux": "cinematic dolly-in with precision, rich textures in natural light",
-    "naturel": "gentle handheld drift, leaves and shadows moving naturally",
+    "romantic": "slow orbit, soft natural background blur, warm tones",
+    "friendly": "lively dolly through space, subtle life movement in background",
+    "luxurious": "cinematic dolly-in with precision, rich textures in natural light",
+    "natural": "gentle handheld drift, leaves and shadows moving naturally",
 }
 
 # ---------------------------------------------------------------------------
@@ -131,15 +131,18 @@ AMBIANCE_MOTION_MAP = {
 # ---------------------------------------------------------------------------
 
 CATEGORY_MOTION_MAP = {
-    "chambre": "slow dolly-in toward the bed, curtains swaying gently, morning light shifting across linens",
-    "exterieur": "cinematic pan across the facade, clouds drifting, shadows moving",
-    "terrasse": "smooth tracking shot along the terrace, breeze moving tablecloths and plants",
-    "salle_bain": "push-in through steam wisps, water droplets catching light",
+    "room": "slow dolly-in toward the bed, curtains swaying gently, morning light shifting across linens",
+    "exterior": "cinematic pan across the facade, clouds drifting, shadows moving",
+    "terrace": "smooth tracking shot along the terrace, breeze moving tablecloths and plants",
+    "bathroom": "push-in through steam wisps, water droplets catching light",
     "restaurant": "dolly past the table setting, candle flames flickering, ambient glow",
     "patio": "slow orbit around patio, Mediterranean plants swaying, dappled sunlight",
     "reception": "wide dolly forward into the lobby, Art Nouveau details revealed progressively",
     "architecture": "cinematic tilt up revealing ornate details, light traveling across surfaces",
     "destination": "drone-style slow rise revealing Sitges coastline, waves rolling",
+    "common": "smooth dolly through the common area, Art Nouveau details catching light",
+    "food": "slow dolly past the table setting, steam rising, natural light on plates",
+    "experience": "cinematic tracking shot following the activity, natural light",
 }
 
 
@@ -147,76 +150,90 @@ CATEGORY_MOTION_MAP = {
 # Scenario prompt — creative storytelling from photos
 # ---------------------------------------------------------------------------
 
-SCENARIO_SYSTEM = """Tu es un directeur créatif pour les réseaux sociaux de l'Hôtel Noucentista, un boutique-hôtel Art Nouveau à Sitges.
-Tu inventes des scénarios vidéo créatifs, drôles ou émouvants à partir de photos de l'hôtel.
+SCENARIO_SYSTEM = """You are a creative director for Hotel Noucentista's social media, a boutique Art Nouveau hotel in Sitges.
+You invent creative, funny, or moving video scenarios from photos of the hotel.
 
-L'hôtel a une personnalité chaleureuse et décalée. Des chats vivent à l'hôtel et sont les mascottes officieuses.
+The hotel has a warm and quirky personality. Cats live in the hotel and are the unofficial mascots.
 
-RÈGLE CRITIQUE pour le motion_prompt :
-- Chaque prompt DOIT décrire une ACTION CONCRÈTE avec un sujet animé (chat, personne, objet qui bouge).
-- Un simple mouvement de caméra (zoom, pan, dolly) sur une image statique = vidéo ennuyeuse et INUTILISABLE.
-- Exemples de bonnes actions : "un chat saute sur le lit", "une main ouvre un livre", "le vent soulève violemment les rideaux", "quelqu'un plonge dans la piscine".
-- Exemples de mauvais prompts : "slow dolly forward", "gentle pan across the room", "warm light shifting".
-- Rester DANS le cadre de la photo — ne jamais demander de mouvements révélant du hors-champ.
+CRITICAL RULE for motion_prompt:
+- Every prompt MUST describe a CONCRETE ACTION with an animated subject (cat, person, moving object).
+- A simple camera movement (zoom, pan, dolly) on a static image = boring and UNUSABLE video.
+- Good action examples: "a cat jumps on the bed", "a hand opens a book", "wind violently lifts the curtains", "someone dives into the pool".
+- Bad prompt examples: "slow dolly forward", "gentle pan across the room", "warm light shifting".
+- Stay WITHIN the frame of the photo — never request movements that reveal off-camera areas.
 
-RÉALISME :
-- Par défaut, les scénarios doivent produire des vidéos RÉALISTES (comme filmées au smartphone ou caméra pro).
-- Les proportions doivent être respectées (pas d'objets géants ou miniatures), la physique doit être naturelle.
-- NE PAS utiliser dans le motion_prompt : "magical", "ethereal", "sparkling", "scintillating", "glowing particles". Ces mots produisent des résultats artificiels.
-- EXCEPTION pour mood "drôle" ou scénarios avec chats/éléments fantaisistes : le surréalisme est autorisé et encouragé (chats qui parlent, objets qui s'animent, effets comiques exagérés).
-- Pour moods "émouvant" et "poétique" : rester réaliste — la beauté vient de la situation et de la lumière naturelle, pas d'effets spéciaux.
+REALISM:
+- By default, scenarios must produce REALISTIC videos (like filmed on a smartphone or pro camera).
+- Proportions must be respected (no giant or miniature objects), physics must be natural.
+- DO NOT use in the motion_prompt: "magical", "ethereal", "sparkling", "scintillating", "glowing particles". These words produce artificial results.
+- EXCEPTION for "funny" mood or scenarios with cats/fanciful elements: surrealism is allowed and encouraged (talking cats, animated objects, exaggerated comic effects).
+- For "emotional" and "poetic" moods: stay realistic — the beauty comes from the situation and natural light, not special effects.
 
-Réponds en JSON avec cette structure :
+RECURRING CHARACTERS:
+- The hotel has recurring characters (cats, owner) listed in the character roster below.
+- When your scenario naturally involves a character from the roster, you MUST:
+  1. Include their ID in the "characters_used" array of that scenario
+  2. Describe them by their distinctive physical features in the motion_prompt so the video model preserves their appearance (e.g. "Horacio, a large red Maine Coon with long fluffy fur, white chest, golden-amber eyes and prominent ear tufts, jumps onto the bed...")
+  3. Maximum 2 characters per scenario (technical limit of the video model's reference image slots)
+- The source photo already provides the setting, so characters come FROM OUTSIDE the setting (entering, appearing, reacting).
+- If a scenario does not involve any roster character, leave "characters_used" as an empty array.
+- Not every scenario needs a character — only include them when they genuinely enhance the creative concept.
+
+Respond in JSON with this structure:
 {
   "scenarios": [
     {
-      "title": "Titre court (5-8 mots)",
-      "description": "Description du scénario en 2-3 phrases",
-      "motion_prompt": "Prompt en anglais pour le modèle vidéo — DOIT contenir une action concrète (max 150 mots)",
-      "mood": "L'ambiance visée (drôle/émouvant/spectaculaire/poétique)",
-      "caption_hook": "Première ligne de la légende Instagram (accroche)"
+      "title": "Short title (5-8 words)",
+      "description": "Scenario description in 2-3 sentences",
+      "motion_prompt": "Prompt in English for the video model — MUST contain a concrete action (max 150 words). When a character is used, describe them by their distinctive features.",
+      "mood": "Intended mood (funny/emotional/spectacular/poetic)",
+      "caption_hook": "First line of the Instagram caption (hook)",
+      "characters_used": ["list of character IDs used in this scenario, or empty array"]
     }
   ]
 }"""
 
-SCENARIO_TEMPLATE = """Invente {count} scénarios vidéo créatifs pour Instagram Reels à partir de cette photo d'hôtel.
+SCENARIO_TEMPLATE = """Invent {count} creative video scenarios for Instagram Reels from this hotel photo.
 
-Photo :
-- Catégorie : {category}
-- Éléments visibles : {elements}
-- Description : {description_en}
+Photo:
+- Category: {category}
+- Visible elements: {elements}
+- Description: {description_en}
 
-Contexte hôtel :
+Hotel context:
 {hotel_context}
 
-Brief créatif : {creative_brief}
+{character_roster}
 
-IMPORTANT :
-- Chaque scénario DOIT avoir une action concrète avec un sujet animé (chat, personne, objet en mouvement).
-- Un simple zoom ou pan = inutilisable. Il faut que quelque chose SE PASSE dans la vidéo.
-- Les scénarios doivent être réalisables par un modèle de génération vidéo IA (pas de montage complexe).
-- Privilégie l'humour, l'émotion ou le spectaculaire. Les chats de l'hôtel sont toujours un excellent angle.
-- Reste dans le cadre de la photo — ne pas imaginer des bâtiments ou décors absents de l'image.
-- RÉALISME : le motion_prompt doit produire une vidéo qui ressemble à un vrai tournage. Proportions normales, physique naturelle, lumière réaliste. Pas de mots comme "magical", "sparkling", "ethereal". EXCEPTION : mood "drôle" ou scénarios fantaisistes avec chats — le surréalisme est OK."""
+Creative brief: {creative_brief}
+
+IMPORTANT:
+- Every scenario MUST have a concrete action with an animated subject (cat, person, moving object).
+- A simple zoom or pan = unusable. Something must HAPPEN in the video.
+- Scenarios must be feasible for an AI video generation model (no complex editing).
+- Prioritize humor, emotion, or spectacle. The hotel cats are always a great angle.
+- Stay within the frame of the photo — don't imagine buildings or sets not in the image.
+- REALISM: the motion_prompt must produce a video that looks like a real shoot. Normal proportions, natural physics, realistic light. No words like "magical", "sparkling", "ethereal". EXCEPTION: "funny" mood or fanciful scenarios with cats — surrealism is OK.
+- CHARACTER USE: When a scenario involves a character from the roster, include their ID in "characters_used" AND describe them by their distinctive physical features in the motion_prompt. Maximum 2 characters per scenario. If no character is involved, use an empty array for "characters_used"."""
 
 
 # ---------------------------------------------------------------------------
 # Seasonal variant prompt
 # ---------------------------------------------------------------------------
 
-SEASONAL_SYSTEM = """Tu es un directeur artistique qui adapte des photos d'hôtel à différentes saisons.
-Tu génères un prompt en anglais pour un modèle IA de génération d'image (Stable Diffusion, etc.)
-qui transforme la photo dans l'ambiance de la saison demandée.
+SEASONAL_SYSTEM = """You are an art director who adapts hotel photos to different seasons.
+You generate an English prompt for an AI image generation model (Stable Diffusion, etc.)
+that transforms the photo into the atmosphere of the requested season.
 
-Réponds UNIQUEMENT avec le prompt en anglais (max 100 mots)."""
+Respond ONLY with the English prompt (max 100 words)."""
 
-SEASONAL_TEMPLATE = """Adapte cette photo à la saison "{target_season}".
+SEASONAL_TEMPLATE = """Adapt this photo to the "{target_season}" season.
 
-Photo actuelle :
-- Catégorie : {category}
-- Éléments : {elements}
-- Description : {description_en}
-- Saison actuelle : {current_season}
+Current photo:
+- Category: {category}
+- Elements: {elements}
+- Description: {description_en}
+- Current season: {current_season}
 
-Le prompt doit modifier : éclairage, végétation, décorations saisonnières, ambiance.
-Garder l'identité du lieu reconnaissable."""
+The prompt must modify: lighting, vegetation, seasonal decorations, ambiance.
+Keep the location identity recognizable."""

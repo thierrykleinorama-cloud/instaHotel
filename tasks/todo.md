@@ -155,6 +155,9 @@
 - [x] **Rating tooltip** — Help text on rating slider: "Your quality assessment: 1 = poor, 5 = excellent. Used to improve future AI prompts."
 - [x] **Video size in Drafts Review** — Constrained video player to 2/3 width for better fit on screen
 
+- [x] **Auto-create post + captions on video generation** — Photo to Video page now auto-creates a draft post with ES/EN/FR captions + hashtags after every successful video generation. Scenario `caption_hook` used as opening line. Manual "Save as Post" section removed. DONE 2026-04-18.
+- [x] **Drop Kling v2.1** — Removed from VIDEO_MODELS, replaced by Kling V3 Omni as default. Updated batch_creative.py route mapping. DONE 2026-04-18.
+- [ ] **Force duration=8s in UI when scenario has characters** — Photo to Video page (`8_Photo_to_Video.py`) duration slider should auto-set/lock to 8s whenever the active scenario has `characters_used` non-empty (or `cs_characters_used` session state is set). Veo 3.1 requires duration=8 with reference_images — currently `veo_generator.py` force-overrides internally but the UI still shows the user's chosen value, which is misleading. Add a Streamlit info/warning line explaining the constraint. Same logic should apply on the batch side when character refs are wired there.
 - [ ] **Batch retry failed posts** — Add "Retry Failed" button to Batch Generate results or Review page. Re-run generation for existing failed post rows instead of creating new ones. Currently must regenerate entire batch.
 - [ ] **Batch photo enhancement (Phase 2.5B)** — Bulk-enhance ~94 low-quality media (ig_quality < 5). Re-run Claude Vision, keep if +2 improvement. Add DB columns: enhanced_url, enhanced_quality, enhancement_method. Upload to `Generated/Enhanced/` in Drive. Folder already created.
 - [ ] **Auto-retarget** — Outpaint photos to 4:5 (feed) and 9:16 (story/reel) in batch

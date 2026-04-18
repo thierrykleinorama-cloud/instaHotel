@@ -4,57 +4,57 @@ Generates 2-3 caption variants (short + storytelling + reel for videos) x 3 lang
 """
 from src.prompts.sitges_context import SITGES_OVERVIEW, SITGES_PRACTICAL
 
-VIDEO_INSTRUCTION = "IMPORTANT : Ce média est une vidéo. Pour la variante 'reel', écris une accroche ultra-courte qui capte l'attention dès la première seconde. Mise sur le mouvement, l'action, le POV. Pour les autres variantes, évoque le mouvement et l'expérience visuelle."
+VIDEO_INSTRUCTION = "IMPORTANT: This media is a video. For the 'reel' variant, write an ultra-short hook that grabs attention in the first second. Focus on movement, action, POV. For other variants, evoke the movement and visual experience."
 
-SYSTEM_PROMPT = f"""Tu es le community manager de l'Hôtel Noucentista, un hôtel boutique Art Nouveau à Sitges (Barcelone).
-Tu écris des légendes Instagram authentiques, chaleureuses, jamais corporate.
-Tu maîtrises parfaitement l'espagnol, l'anglais et le français.
+SYSTEM_PROMPT = f"""You are the community manager of Hotel Noucentista, a boutique Art Nouveau hotel in Sitges (Barcelona).
+You write authentic, warm Instagram captions — never corporate.
+You are fluent in Spanish, English, and French.
 
-CONTEXTE SITGES (utilise ces détails pour écrire des légendes localement ancrées) :
+SITGES CONTEXT (use these details to write locally-grounded captions):
 {SITGES_OVERVIEW}
 
-CONNEXION HÔTEL :
-{SITGES_PRACTICAL.split("HOTEL NOUCENTISTA CONNECTION:")[1].strip() if "HOTEL NOUCENTISTA CONNECTION:" in SITGES_PRACTICAL else "Hôtel boutique Art Nouveau au coeur de Sitges, Carrer de l'Illa de Cuba 21."}
+HOTEL CONNECTION:
+{SITGES_PRACTICAL.split("HOTEL NOUCENTISTA CONNECTION:")[1].strip() if "HOTEL NOUCENTISTA CONNECTION:" in SITGES_PRACTICAL else "Boutique Art Nouveau hotel in the heart of Sitges, Carrer de l'Illa de Cuba 21."}
 
-Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans commentaires)."""
+Respond ONLY with a valid JSON object (no markdown, no commentary)."""
 
-USER_PROMPT_TEMPLATE = """Génère des légendes Instagram pour ce média hôtelier.
+USER_PROMPT_TEMPLATE = """Generate Instagram captions for this hotel media.
 
-Contexte du média :
-- Type de média : {media_type}
-- Catégorie : {category}
-- Sous-catégorie : {subcategory}
-- Ambiance : {ambiance}
-- Éléments visibles : {elements}
-- Description FR : {description_fr}
-- Description EN : {description_en}
-- Notes manuelles : {manual_notes}
+Media context:
+- Media type: {media_type}
+- Category: {category}
+- Subcategory: {subcategory}
+- Ambiance: {ambiance}
+- Visible elements: {elements}
+- FR description: {description_fr}
+- EN description: {description_en}
+- Manual notes: {manual_notes}
 
-Contexte éditorial :
-- Thème : {theme}
-- Saison : {season}
-- Type de CTA : {cta_type}
+Editorial context:
+- Theme: {theme}
+- Season: {season}
+- CTA type: {cta_type}
 
-Génère un JSON avec cette structure exacte :
+Generate a JSON object with this exact structure:
 {{
   "short": {{
-    "es": "Légende courte en espagnol (2-3 lignes, percutante)",
-    "en": "Short English caption (2-3 lines, punchy)",
-    "fr": "Légende courte en français (2-3 lignes, percutante)"
+    "es": "Short Spanish caption (2-3 punchy lines)",
+    "en": "Short English caption (2-3 punchy lines)",
+    "fr": "Short French caption (2-3 punchy lines)"
   }},
   "storytelling": {{
-    "es": "Légende storytelling en espagnol (5-6 lignes, émotionnelle)",
-    "en": "Storytelling English caption (5-6 lines, emotional)",
-    "fr": "Légende storytelling en français (5-6 lignes, émotionnelle)"
+    "es": "Spanish storytelling caption (5-6 emotional lines)",
+    "en": "English storytelling caption (5-6 emotional lines)",
+    "fr": "French storytelling caption (5-6 emotional lines)"
   }},
   "reel": {{
-    "es": "Légende reel en espagnol (1-2 lignes max, accroche immédiate, hook-first, style POV/action)",
-    "en": "Reel English caption (1-2 lines max, instant hook, hook-first, POV/action style)",
-    "fr": "Légende reel en français (1-2 lignes max, accroche immédiate, hook-first, style POV/action)"
+    "es": "Spanish reel caption (1-2 lines max, instant hook, hook-first, POV/action style)",
+    "en": "English reel caption (1-2 lines max, instant hook, hook-first, POV/action style)",
+    "fr": "French reel caption (1-2 lines max, instant hook, hook-first, POV/action style)"
   }},
-  "hashtags": ["20 hashtags pertinents, mix popularité, sans le #"]
+  "hashtags": ["20 relevant hashtags, mix of popularity levels, without the #"]
 }}
 
-Inclus un CTA naturel ({cta_type}) dans chaque légende.
+Include a natural CTA ({cta_type}) in each caption.
 {tone_instruction}
 {video_instruction}"""

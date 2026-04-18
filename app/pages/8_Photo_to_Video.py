@@ -258,7 +258,7 @@ with tab_video:
             "Claude analyzes the photo + metadata and writes a cinematic motion prompt "
             "tailored to the duration and format. You can add a creative brief to guide the style."
         )
-        st.caption("Tools: **Claude Sonnet** (prompt writing) → **Kling v2.1** (video generation)")
+        st.caption("Tools: **Claude Sonnet** (prompt writing) → **Kling / Veo** (video generation)")
         ai_brief = st.text_input(
             "Creative brief (optional)",
             placeholder="e.g., 'dreamy morning light', 'dramatic reveal', 'cats walking through the scene'",
@@ -311,7 +311,7 @@ with tab_video:
         default_prompt = st.session_state.get("cs_motion_prompt", auto_prompt)
 
     elif prompt_method.startswith("From scenario"):
-        st.caption("Tools: **Claude Sonnet** (scenario brainstorming) → **Kling v2.1** (video generation)")
+        st.caption("Tools: **Claude Sonnet** (scenario brainstorming) → **Kling / Veo** (video generation)")
         scenario_prompt = st.session_state.get("cs_motion_prompt")
         if scenario_prompt and scenario_prompt != auto_prompt:
             default_prompt = scenario_prompt
@@ -321,7 +321,7 @@ with tab_video:
             default_prompt = auto_prompt
 
     elif prompt_method.startswith("Manual"):
-        st.caption("Tools: **Kling v2.1** (video generation only — you write the prompt)")
+        st.caption("Tools: **Kling / Veo** (video generation only — you write the prompt)")
         default_prompt = st.session_state.get("cs_motion_prompt", "")
         if not default_prompt:
             st.info(
@@ -332,7 +332,7 @@ with tab_video:
             )
     else:
         # Auto
-        st.caption("Tools: **Kling v2.1** (video generation only — prompt from metadata dictionary, no AI)")
+        st.caption("Tools: **Kling / Veo** (video generation only — prompt from metadata dictionary, no AI)")
         default_prompt = auto_prompt
         st.caption(
             f"Auto-generated from metadata: ambiance ({', '.join(media.get('ambiance', []) or ['—'])}) "
@@ -361,6 +361,21 @@ with tab_video:
             help="Tells the model what to avoid. Standard defaults work well.",
         )
 
+    # Show active character references (if any were loaded from a scenario)
+    _active_char_ids = st.session_state.get("cs_characters_used") or []
+    if _active_char_ids:
+        try:
+            from src.services.characters_queries import fetch_characters_by_ids
+            _active_chars = fetch_characters_by_ids(_active_char_ids)
+            if _active_chars:
+                _names = ", ".join(c["name"] for c in _active_chars)
+                st.info(f":violet[Character references active:] **{_names}** will be passed as reference images to Veo.", icon=":material/person:")
+                if st.button("Clear character references", key="cs_clear_chars"):
+                    st.session_state["cs_characters_used"] = []
+                    st.rerun()
+        except Exception:
+            pass
+
     # Generate video
     if st.button("Generate Video", type="primary", key="cs_gen_video"):
         with st.spinner(f"Generating {duration}s video... This may take 1-5 minutes."):
@@ -372,9 +387,14 @@ with tab_video:
                     aspect_ratio=aspect_ratio,
                     model=video_model,
                     negative_prompt=neg_prompt,
+                    reference_character_ids=_active_char_ids if _active_char_ids else None,
                 )
                 st.session_state["cs_video_result"] = result
-                st.success(f"Video generated! Cost: ${result['_cost']['cost_usd']:.2f}")
+                _chars_used = result.get("characters_used", [])
+                _msg = f"Video generated! Cost: ${result['_cost']['cost_usd']:.2f}"
+                if _chars_used:
+                    _msg += f" — with references: {', '.join(_chars_used)}"
+                st.success(_msg)
                 # Persist video to Storage + Drive + DB
                 try:
                     _ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -406,6 +426,54 @@ with tab_video:
                         st.session_state["ptv_last_video_job_id"] = _job_row["id"]
                     # Refresh prev_videos list
                     st.session_state["cs_prev_videos"] = fetch_video_jobs(media_id, limit=5)
+
+                    # --- Auto-create post with captions ---
+                    try:
+                        from src.services.posts_queries import create_post
+                        from src.services.caption_generator import generate_captions
+
+                        _post_type = "reel-veo" if "veo" in video_model.lower() else "reel-kling"
+                        _scenario_id = st.session_state.get("cs_accepted_scenario_id")
+
+                        # Generate captions (ES/EN/FR + hashtags)
+                        _caption_hook = st.session_state.get("cs_caption_hook", "")
+                        _scenario_desc = st.session_state.get("cs_scenario_description", "")
+                        _reel_context = ""
+                        if _caption_hook:
+                            _reel_context += f"Opening hook: {_caption_hook}\n"
+                        if _scenario_desc:
+                            _reel_context += f"Video concept: {_scenario_desc}\n"
+
+                        _caption_theme = _reel_context if _reel_context else media.get("description_en", "")
+                        _captions = generate_captions(
+                            media=media,
+                            theme=_caption_theme,
+                            season="",
+                            cta_type="auto",
+                            tone="default",
+                        )
+                        _short = _captions.get("short", {})
+                        _hashtags = _captions.get("hashtags", [])
+
+                        post_data = {
+                            "post_type": _post_type,
+                            "media_id": media.get("id"),
+                            "category": media.get("category", ""),
+                            "video_job_id": _job_row.get("id"),
+                            "scenario_id": _scenario_id,
+                            "caption_es": _short.get("es", ""),
+                            "caption_en": _short.get("en", ""),
+                            "caption_fr": _short.get("fr", ""),
+                            "hashtags": _hashtags,
+                            "total_cost_usd": result["_cost"]["cost_usd"] + _captions.get("_usage", {}).get("cost_usd", 0),
+                            "status": "review",
+                            "generation_source": "individual",
+                        }
+                        _post_id = create_post(post_data)
+                        st.success("Post created with captions! Go to **Review** to approve it.")
+                    except Exception as _pe:
+                        st.warning(f"Video saved but auto-post failed: {_pe}")
+
                 except Exception:
                     pass  # non-critical
             except Exception as e:
@@ -540,6 +608,18 @@ with tab_scenarios:
                 st.markdown(f"**{s.get('description', '')}**")
                 st.caption(f"Mood: {s.get('mood', '?')}")
 
+                # Show characters used in this scenario
+                _char_ids = s.get("characters_used") or []
+                if _char_ids:
+                    try:
+                        from src.services.characters_queries import fetch_characters_by_ids
+                        _chars = fetch_characters_by_ids(_char_ids)
+                        _char_names = [c["name"] for c in _chars]
+                        if _char_names:
+                            st.markdown(f":violet[Characters:] {', '.join(_char_names)}")
+                    except Exception:
+                        pass
+
                 st.text_area(
                     "Motion prompt",
                     value=s.get("motion_prompt", ""),
@@ -552,8 +632,15 @@ with tab_scenarios:
 
                 if st.button("Use this prompt for video", key=f"cs_use_scenario_{s['id']}"):
                     st.session_state["cs_motion_prompt"] = s.get("motion_prompt", "")
+                    st.session_state["cs_characters_used"] = _char_ids
+                    st.session_state["cs_caption_hook"] = s.get("caption_hook", "")
+                    st.session_state["cs_scenario_description"] = s.get("description", "")
+                    st.session_state["cs_accepted_scenario_id"] = s.get("id")
                     st.session_state["_cs_prompt_updated"] = True
-                    st.info("Prompt loaded! Switch to the Photo-to-Video tab to generate.")
+                    _msg = "Prompt loaded"
+                    if _char_ids:
+                        _msg += f" with {len(_char_ids)} character reference(s)"
+                    st.info(f"{_msg}! Switch to the Photo-to-Video tab to generate.")
 
                 # Inline accept/reject
                 _render_feedback(s["id"], "scenario", "pv_sc", current_status=sc_status)
@@ -842,55 +929,3 @@ with tab_music:
             key_prefix="mu_pub",
         )
 
-# -------------------------------------------------------
-# Save as Post (available from any tab once content exists)
-# -------------------------------------------------------
-st.divider()
-st.subheader("Save as Post")
-
-# Detect what's available
-_has_video = bool(st.session_state.get("ptv_video_bytes") or st.session_state.get("mu_composite_result"))
-_has_scenario = bool(st.session_state.get("cs_result"))
-
-if _has_video:
-    st.caption("Save this reel to the Review queue for later publishing.")
-    if st.button("Save as Post", type="primary", key="reel_save_post"):
-        from src.services.posts_queries import create_post
-
-        # Determine post_type from model used
-        _model_key = st.session_state.get("ptv_model", DEFAULT_VIDEO_MODEL)
-        if "veo" in _model_key.lower():
-            _post_type = "reel-veo"
-        else:
-            _post_type = "reel-kling"
-
-        # Find video job ID
-        _video_job_id = st.session_state.get("ptv_last_video_job_id")
-
-        # Find accepted scenario ID
-        _scenario_id = st.session_state.get("cs_accepted_scenario_id")
-
-        # Find music ID
-        _music_id = st.session_state.get("mu_last_music_id")
-
-        post_data = {
-            "post_type": _post_type,
-            "media_id": media.get("id"),
-            "category": media.get("category", ""),
-            "season": st.session_state.get("ptv_season", ""),
-            "video_job_id": _video_job_id,
-            "scenario_id": _scenario_id,
-            "music_id": _music_id,
-            "status": "review",
-            "generation_source": "individual",
-        }
-        try:
-            post_id = create_post(post_data)
-            st.success("Post saved! Go to **Review Posts** to approve it.")
-            st.caption("Note: Captions will be generated separately — or add them in the Review page.")
-        except Exception as e:
-            st.error(f"Save failed: {e}")
-elif _has_scenario:
-    st.info("Generate a video first, then save as post.")
-else:
-    st.info("Generate scenarios and video to save as a post.")

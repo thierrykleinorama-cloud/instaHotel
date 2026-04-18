@@ -101,7 +101,7 @@ def suggest_carousel_themes(
         categories=", ".join(categories),
         total_images=total,
         top_elements=", ".join(top_elements[:15]),
-        seasons=", ".join(all_seasons) or "toute_saison",
+        seasons=", ".join(all_seasons) or "any_season",
     )
 
     response = client.messages.create(

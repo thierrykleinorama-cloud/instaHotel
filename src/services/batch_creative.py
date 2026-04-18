@@ -47,7 +47,7 @@ from src.utils import encode_image_bytes
 # ---------------------------------------------------------------------------
 
 ROUTE_VIDEO_MODEL = {
-    "reel-kling": "kling-v2.1",
+    "reel-kling": "kling-v3-omni",
     "reel-veo": "veo-3.1-fast",
 }
 
@@ -109,7 +109,7 @@ def get_video_model_for_slot(slot: dict) -> str:
     route = slot.get("target_format") or "reel-veo"
     if route == "reel":
         route = "reel-veo"
-    return ROUTE_VIDEO_MODEL.get(route, "kling-v2.1")
+    return ROUTE_VIDEO_MODEL.get(route, "kling-v3-omni")
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +205,7 @@ def batch_generate_scenarios(
 
 def batch_generate_videos(
     slots: list[dict],
-    video_model: str = "kling-v2.1",
+    video_model: str = "kling-v3-omni",
     duration: int = 5,
     aspect_ratio: str = "9:16",
     progress_callback: ProgressCallback = None,
@@ -232,7 +232,7 @@ def batch_generate_videos(
     for i, slot in enumerate(slots):
         cal_id = slot["id"]
         # Use explicit model if caller specified one, otherwise derive from route
-        slot_model = video_model if video_model != "kling-v2.1" else get_video_model_for_slot(slot)
+        slot_model = video_model if video_model != "kling-v3-omni" else get_video_model_for_slot(slot)
         # Adapt duration for provider
         model_info = VIDEO_MODELS.get(slot_model, {})
         slot_duration = duration
@@ -636,7 +636,7 @@ def batch_generate_carousels(
 
         try:
             cat = slot.get("target_category") or "experience"
-            season = slot.get("season_context") or "toute_saison"
+            season = slot.get("season_context") or "any_season"
             theme_name = slot.get("theme_name") or ""
             post_date = slot.get("post_date", "")
 
@@ -772,7 +772,7 @@ def batch_generate_slideshows(
 
         try:
             cat = slot.get("target_category") or "experience"
-            season = slot.get("season_context") or "toute_saison"
+            season = slot.get("season_context") or "any_season"
             post_date_str = slot.get("post_date", date.today().isoformat())
             post_date = date.fromisoformat(post_date_str) if isinstance(post_date_str, str) else post_date_str
 
@@ -900,7 +900,7 @@ def estimate_scenario_cost(
 
 def estimate_video_cost(
     slot_count: int,
-    model: str = "kling-v2.1",
+    model: str = "kling-v3-omni",
     duration: int = 5,
 ) -> dict:
     """Estimate cost for video batch."""

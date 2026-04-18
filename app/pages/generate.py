@@ -87,7 +87,7 @@ with col1:
         help=f"Default = {len(recipe)} (one week from your content recipe)",
     )
 
-    season_options = ["auto", "printemps", "ete", "automne", "hiver"]
+    season_options = ["auto", "spring", "summer", "autumn", "winter"]
     season_sel = st.selectbox("Season", season_options, key="bg_season")
     season = get_current_season(date.today()) if season_sel == "auto" else season_sel
 

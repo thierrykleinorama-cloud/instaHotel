@@ -32,7 +32,7 @@ def resolve_slot_context(entry: dict) -> dict:
         post_date = entry.get("post_date")
         if isinstance(post_date, str):
             post_date = date.fromisoformat(post_date)
-        season = get_current_season(post_date) if post_date else "toute_saison"
+        season = get_current_season(post_date) if post_date else "any_season"
 
     # Theme: from entry or look up by date
     theme_name = entry.get("theme_name") or ""

@@ -25,7 +25,7 @@ from src.services.editorial_queries import (
 sidebar_css()
 page_title("Rules & Themes", "Configure editorial strategy")
 
-CATEGORIES = ["chambre", "commun", "exterieur", "gastronomie", "experience", "destination"]
+CATEGORIES = ["room", "common", "exterior", "food", "experience", "destination"]
 ROUTES = ["feed", "carousel", "reel-kling", "reel-veo", "reel-slideshow"]
 ROUTE_LABELS = {
     "feed": "Image Post",
@@ -39,12 +39,12 @@ _LEGACY_ROUTE_MAP = {"story": "feed", "reel": "reel-veo"}
 FOCUS_OPTIONS = ["hotel", "destination"]
 FOCUS_LABELS = {"hotel": "Hotel", "destination": "Destination (Sitges Insider)"}
 ASPECT_RATIOS = ["1:1", "4:5", "9:16", "16:9", "3:4"]
-SEASONS = ["printemps", "ete", "automne", "hiver"]
+SEASONS = ["spring", "summer", "autumn", "winter"]
 DAY_NAMES = {1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday", 5: "Friday", 6: "Saturday", 7: "Sunday"}
 AMBIANCE_OPTIONS = [
-    "lumineux", "chaleureux", "romantique", "moderne", "art_nouveau",
-    "mediterraneen", "intime", "elegant", "naturel", "colore",
-    "festif", "zen", "luxueux", "rustique", "contemporain",
+    "bright", "warm", "romantic", "modern", "art_nouveau",
+    "mediterranean", "cozy", "elegant", "natural", "colorful",
+    "festive", "zen", "luxurious", "rustic", "contemporary",
 ]
 
 # -------------------------------------------------------

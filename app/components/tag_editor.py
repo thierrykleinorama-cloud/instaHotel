@@ -10,9 +10,9 @@ from src.services.media_queries import update_media_tags, log_tag_correction
 
 # Known ambiance values from the Vision prompt
 AMBIANCE_OPTIONS = [
-    "lumineux", "chaleureux", "romantique", "moderne", "art_nouveau",
-    "mediterraneen", "intime", "elegant", "naturel", "colore",
-    "festif", "zen", "luxueux", "rustique", "contemporain",
+    "bright", "warm", "romantic", "modern", "art_nouveau",
+    "mediterranean", "cozy", "elegant", "natural", "colorful",
+    "festive", "zen", "luxurious", "rustic", "contemporary",
 ]
 
 

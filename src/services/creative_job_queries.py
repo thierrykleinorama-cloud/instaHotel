@@ -43,6 +43,7 @@ def save_scenario_job(
             "motion_prompt": s.get("motion_prompt", ""),
             "mood": s.get("mood", ""),
             "caption_hook": s.get("caption_hook", ""),
+            "characters_used": s.get("characters_used", []),
             "generation_params": params or {},
             "model": model,
             "cost_usd": per_cost,

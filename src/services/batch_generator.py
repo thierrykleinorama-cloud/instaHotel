@@ -46,7 +46,7 @@ def get_content_recipe() -> list[dict]:
         raw_format = r.get("preferred_format", "feed")
         post_type = _FORMAT_MAP.get(raw_format, "feed")
         recipe.append({
-            "category": r.get("default_category", "chambre"),
+            "category": r.get("default_category", "room"),
             "post_type": post_type,
             "focus": r.get("focus", "hotel"),
             "min_quality": r.get("min_quality", 6),
@@ -212,7 +212,7 @@ def _generate_feed_post(post_id, media, season, tone, model, include_image):
 
     result = generate_captions(
         media=media,
-        theme=media.get("category", "chambre"),
+        theme=media.get("category", "room"),
         season=season,
         cta_type="link_bio",
         include_image=include_image,
@@ -240,7 +240,7 @@ def _generate_carousel_post(post_id, media, all_media, season, tone, model, batc
     from src.services.carousel_ai import select_carousel_images, generate_carousel_captions
     from src.services.carousel_queries import save_carousel_draft
 
-    category = media.get("category", "chambre")
+    category = media.get("category", "room")
 
     # Select carousel images from library (same category, sorted by quality)
     cat_media = [m for m in all_media
@@ -385,11 +385,7 @@ def _generate_reel_post(post_id, media, post_type, season, tone, model):
             from src.services.video_composer import composite_video_audio
             from src.prompts.music_generation import build_music_prompt
 
-            music_prompt = build_music_prompt(
-                category=media.get("category", "chambre"),
-                ambiance=media.get("ambiance", "chaleureux"),
-                season=season,
-            )
+            music_prompt = build_music_prompt(media)
             mu_result = generate_music(prompt=music_prompt, duration=8)
             total_cost += mu_result.get("_cost", {}).get("cost_usd", 0)
 
@@ -419,7 +415,7 @@ def _generate_reel_post(post_id, media, post_type, season, tone, model):
 
         cap_result = generate_captions(
             media=media,
-            theme=media.get("category", "chambre"),
+            theme=media.get("category", "room"),
             season=season,
             cta_type="link_bio",
             include_image=False,

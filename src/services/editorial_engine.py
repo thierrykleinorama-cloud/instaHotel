@@ -13,10 +13,10 @@ from src.database import get_supabase, TABLE_MEDIA_LIBRARY, TABLE_EDITORIAL_CALE
 # -----------------------------------------------------------
 
 SEASON_MAP = {
-    1: "hiver", 2: "hiver", 3: "printemps",
-    4: "printemps", 5: "printemps", 6: "ete",
-    7: "ete", 8: "ete", 9: "automne",
-    10: "automne", 11: "automne", 12: "hiver",
+    1: "winter", 2: "winter", 3: "spring",
+    4: "spring", 5: "spring", 6: "summer",
+    7: "summer", 8: "summer", 9: "autumn",
+    10: "autumn", 11: "autumn", 12: "winter",
 }
 
 
@@ -69,7 +69,7 @@ def score_media(
     media_seasons = media.get("season") or []
     if target_season in media_seasons:
         breakdown["season"] = 20.0
-    elif "toute_saison" in media_seasons:
+    elif "any_season" in media_seasons:
         breakdown["season"] = 12.0
     else:
         breakdown["season"] = 0.0
@@ -261,7 +261,7 @@ def generate_calendar(
 
             # Destination focus: prefer destination category if no specific one set
             focus = rule.get("focus", "hotel")
-            if focus == "destination" and target_cat not in ("destination", "exterieur"):
+            if focus == "destination" and target_cat not in ("destination", "exterior"):
                 target_cat = "destination"
 
             candidates = select_best_media(

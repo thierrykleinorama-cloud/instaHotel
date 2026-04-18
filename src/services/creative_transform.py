@@ -175,10 +175,12 @@ def generate_scenarios(
     count: int = 3,
     image_base64: Optional[str] = None,
     model: str = "claude-sonnet-4-6",
+    include_characters: bool = True,
 ) -> dict:
     """Generate creative video scenarios for a photo.
 
     Returns: {scenarios: [...], _usage: {...}}
+    Each scenario includes a "characters_used" field with character IDs (or empty list).
     """
     import json
     import re
@@ -189,13 +191,29 @@ def generate_scenarios(
         from src.prompts.creative_transform import HOTEL_CONTEXT
         hotel_context = HOTEL_CONTEXT
 
+    # Build character roster for prompt injection
+    character_roster = ""
+    if include_characters:
+        try:
+            from src.services.characters_queries import (
+                fetch_active_characters, build_character_roster_prompt,
+            )
+            chars = fetch_active_characters()
+            if chars:
+                roster_text = build_character_roster_prompt(chars)
+                id_lines = "\n".join(f"  {c['name']}: {c['id']}" for c in chars)
+                character_roster = f"{roster_text}\n\nCHARACTER IDs (use these exact UUIDs in characters_used):\n{id_lines}"
+        except Exception:
+            pass  # Characters optional — proceed without if it fails
+
     user_text = SCENARIO_TEMPLATE.format(
         count=count,
         category=media.get("category", ""),
         elements=", ".join(media.get("elements", [])) if isinstance(media.get("elements"), list) else media.get("elements", ""),
         description_en=media.get("description_en", ""),
         hotel_context=hotel_context,
-        creative_brief=creative_brief or "Liberté créative totale",
+        character_roster=character_roster,
+        creative_brief=creative_brief or "Full creative freedom",
     )
 
     content = []
@@ -246,14 +264,15 @@ def generate_scenarios(
 
 # Available video models
 VIDEO_MODELS = {
-    "kling-v2.1": {
-        "model_id": "kwaivgi/kling-v2.1",
-        "label": "Kling v2.1",
+    "kling-v3-omni": {
+        "model_id": "kwaivgi/kling-v3-omni-video",
+        "label": "Kling V3 Omni",
         "provider": "replicate",
-        "cost_5s": 0.30,
-        "cost_10s": 0.60,
+        "cost_per_sec": 0.126,
         "supports_image": True,
+        "supports_characters": True,
         "image_param": "start_image",
+        "max_refs": 7,
     },
     "veo-3.1-fast": {
         "label": "Veo 3.1 Fast",
@@ -262,6 +281,7 @@ VIDEO_MODELS = {
         "cost_6s": 0.90,
         "cost_8s": 1.20,
         "supports_image": True,
+        "supports_characters": True,
     },
     "veo-3.1": {
         "label": "Veo 3.1 Standard",
@@ -270,10 +290,11 @@ VIDEO_MODELS = {
         "cost_6s": 2.40,
         "cost_8s": 3.20,
         "supports_image": True,
+        "supports_characters": True,
     },
 }
 
-DEFAULT_VIDEO_MODEL = "kling-v2.1"
+DEFAULT_VIDEO_MODEL = "kling-v3-omni"
 
 
 def get_model_durations(model: str) -> list[int]:
@@ -281,7 +302,7 @@ def get_model_durations(model: str) -> list[int]:
     info = VIDEO_MODELS.get(model, {})
     if info.get("provider") == "google":
         return [4, 6, 8]
-    return [5, 10]
+    return [5, 8, 10, 15]  # Kling V3 Omni default
 
 
 def estimate_video_cost(model: str, duration: int) -> float:
@@ -289,7 +310,51 @@ def estimate_video_cost(model: str, duration: int) -> float:
     info = VIDEO_MODELS.get(model, {})
     if info.get("provider") == "google":
         return info.get(f"cost_{duration}s", 0.0)
+    if "cost_per_sec" in info:
+        return round(duration * info["cost_per_sec"], 2)
     return info.get("cost_5s", 0.0) if duration <= 5 else info.get("cost_10s", 0.0)
+
+
+def _build_kling_v3_omni_refs(
+    image_bytes: bytes,
+    prompt: str,
+    reference_character_ids: Optional[list[str]],
+) -> tuple[dict, list[str]]:
+    """Build Kling V3 Omni input params with character reference images.
+
+    Kling V3 Omni uses `reference_images` (file URI array, max 7) and
+    `<<<image_N>>>` tags in the prompt to reference specific images.
+    A character may have multiple reference photos — all are included (up to 7 total).
+    Returns (input_params_extras, characters_loaded).
+    """
+    if not reference_character_ids:
+        return {}, []
+
+    from src.services.characters_queries import load_character_reference_images
+    loaded = load_character_reference_images(reference_character_ids)
+    if not loaded:
+        return {}, []
+
+    ref_uris = []
+    characters_loaded = []
+    prompt_tags = []
+    seen_names = set()
+    for i, (char, img_bytes) in enumerate(loaded[:7], start=1):
+        ref_png = _ensure_png(img_bytes)
+        b64 = base64.b64encode(ref_png).decode()
+        ref_uris.append(f"data:image/png;base64,{b64}")
+        if char["name"] not in seen_names:
+            characters_loaded.append(char["name"])
+            seen_names.add(char["name"])
+        desc = char.get("description", char["name"])
+        prompt_tags.append(f"<<<image_{i}>>> is {desc}")
+
+    ref_preamble = ". ".join(prompt_tags) + ". "
+
+    return {
+        "reference_images": ref_uris,
+        "_prompt_prefix": ref_preamble,
+    }, characters_loaded
 
 
 def photo_to_video(
@@ -300,14 +365,16 @@ def photo_to_video(
     model: str = DEFAULT_VIDEO_MODEL,
     negative_prompt: str = "blurry, distorted, low quality, text overlay, watermark",
     resolution: str = "720p",
+    reference_character_ids: Optional[list[str]] = None,
 ) -> dict:
     """Convert a photo to video.
 
     Dispatches to the correct backend based on model provider:
-    - "replicate" → Kling v2.1 via Replicate
-    - "google" → Veo 3.1 via Gemini API
+    - "replicate" kling-v3-omni → Kling V3 Omni (up to 7 character refs via <<<image_N>>>)
+    - "replicate" kling-v3-omni → Kling V3 Omni (up to 7 character refs via <<<image_N>>>)
+    - "google" → Veo 3.1 via Gemini API (up to 2 character refs as ASSET references)
 
-    Returns: {video_bytes, duration_sec, aspect_ratio, _cost}
+    Returns: {video_bytes, duration_sec, aspect_ratio, _cost, characters_used}
     """
     model_info = VIDEO_MODELS[model]
 
@@ -317,6 +384,7 @@ def photo_to_video(
         return veo_photo_to_video(
             image_bytes, prompt, duration, aspect_ratio, model,
             negative_prompt, resolution,
+            reference_character_ids=reference_character_ids,
         )
 
     client = _get_replicate_client()
@@ -332,6 +400,18 @@ def photo_to_video(
         "negative_prompt": negative_prompt,
         "duration": duration,
     }
+
+    # Kling V3 Omni: add character references + aspect_ratio
+    characters_loaded = []
+    if model == "kling-v3-omni":
+        input_params["aspect_ratio"] = aspect_ratio
+        input_params["mode"] = "standard"
+        ref_extras, characters_loaded = _build_kling_v3_omni_refs(
+            image_bytes, prompt, reference_character_ids,
+        )
+        if ref_extras.get("reference_images"):
+            input_params["reference_images"] = ref_extras["reference_images"]
+            input_params["prompt"] = ref_extras["_prompt_prefix"] + prompt
 
     # Create prediction (async — video gen takes 1-5 min)
     prediction = client.predictions.create(
@@ -362,6 +442,7 @@ def photo_to_video(
         "video_bytes": video_bytes,
         "duration_sec": duration,
         "aspect_ratio": aspect_ratio,
+        "characters_used": characters_loaded,
         "_cost": {"operation": f"photo_to_video_{model}", "cost_usd": cost,
                   "predict_time": predict_time},
     }

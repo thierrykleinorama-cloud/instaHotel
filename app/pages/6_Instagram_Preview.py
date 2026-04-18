@@ -45,12 +45,12 @@ with st.sidebar:
 
     theme = st.selectbox(
         "Theme",
-        ["chambre", "destination", "experience", "gastronomie", "offre"],
+        ["room", "destination", "experience", "food", "offer"],
         key="cap_theme",
     )
     season = st.selectbox(
         "Season",
-        ["printemps", "ete", "automne", "hiver", "toute_saison"],
+        ["spring", "summer", "autumn", "winter", "any_season"],
         key="cap_season",
     )
     CTA_OPTIONS = {

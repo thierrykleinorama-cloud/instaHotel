@@ -7,32 +7,32 @@ from pydantic import BaseModel, Field, field_validator
 
 # Valid values for structured fields
 VALID_CATEGORIES = {
-    "chambre", "commun", "exterieur", "gastronomie", "experience", "destination"
+    "room", "common", "exterior", "food", "experience", "destination"
 }
 
-VALID_SEASONS = {"printemps", "ete", "automne", "hiver", "toute_saison"}
+VALID_SEASONS = {"spring", "summer", "autumn", "winter", "any_season"}
 
 
 class VisionAnalysis(BaseModel):
     """Structured output from Claude Vision analysis of a hotel photo/video frame."""
 
     category: str = Field(
-        description="Main category: chambre, commun, exterieur, gastronomie, experience, destination"
+        description="Main category: room, common, exterior, food, experience, destination"
     )
     subcategory: str = Field(
-        description="Specific area: suite, terrasse, piscine, petit_dejeuner, spa, etc."
+        description="Specific area: suite, terrace, pool, breakfast, spa, etc."
     )
     ambiance: list[str] = Field(
         default_factory=list,
-        description="Mood tags: lumineux, chaleureux, romantique, moderne, art_nouveau, etc."
+        description="Mood tags: bright, warm, romantic, modern, art_nouveau, mediterranean, cozy, elegant, natural, colorful, etc."
     )
     season: list[str] = Field(
         default_factory=list,
-        description="Best seasons: printemps, ete, automne, hiver, toute_saison"
+        description="Best seasons: spring, summer, autumn, winter, any_season"
     )
     elements: list[str] = Field(
         default_factory=list,
-        description="Visible elements: lit, vue_mer, piscine, terrasse, mobilier, etc."
+        description="Visible elements: bed, sea_view, pool, terrace, furniture, etc."
     )
     ig_quality: int = Field(
         ge=1, le=10,
@@ -50,12 +50,12 @@ class VisionAnalysis(BaseModel):
     def validate_category(cls, v: str) -> str:
         v = v.lower().strip()
         if v not in VALID_CATEGORIES:
-            # Best-effort mapping
+            # Best-effort mapping (handles legacy French + alt English)
             mapping = {
-                "room": "chambre", "bedroom": "chambre",
-                "common": "commun", "lobby": "commun", "lounge": "commun",
-                "exterior": "exterieur", "outdoor": "exterieur", "garden": "exterieur",
-                "food": "gastronomie", "restaurant": "gastronomie", "dining": "gastronomie",
+                "chambre": "room", "bedroom": "room",
+                "commun": "common", "lobby": "common", "lounge": "common",
+                "exterieur": "exterior", "outdoor": "exterior", "garden": "exterior",
+                "gastronomie": "food", "restaurant": "food", "dining": "food",
                 "activity": "experience", "event": "experience",
                 "town": "destination", "city": "destination", "beach": "destination",
                 "street": "destination", "village": "destination", "landscape": "destination",

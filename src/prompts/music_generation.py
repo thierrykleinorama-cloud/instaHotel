@@ -7,16 +7,18 @@ Prompts for AI music generation — maps hotel ambiance/category to music styles
 # ---------------------------------------------------------------------------
 
 AMBIANCE_MUSIC_MAP = {
-    "chaleureux": "warm acoustic guitar, soft bossa nova, cozy cafe atmosphere",
-    "lumineux": "upbeat acoustic pop, bright ukulele, morning sunshine vibes",
-    "intime": "soft piano, intimate jazz trio, whispered percussion",
-    "méditerranéen": "Spanish guitar, light flamenco rhythm, sea breeze feeling",
-    "élégant": "smooth jazz piano, subtle strings, sophisticated lounge",
+    "warm": "warm acoustic guitar, soft bossa nova, cozy cafe atmosphere",
+    "bright": "upbeat acoustic pop, bright ukulele, morning sunshine vibes",
+    "cozy": "soft piano, intimate jazz trio, whispered percussion",
+    "mediterranean": "Spanish guitar, light flamenco rhythm, sea breeze feeling",
+    "elegant": "smooth jazz piano, subtle strings, sophisticated lounge",
     "zen": "ambient pads, soft water sounds, meditation bells, peaceful",
-    "romantique": "romantic piano melody, soft strings, sunset warmth",
-    "convivial": "upbeat latin acoustic, gentle percussion, happy terrace vibes",
-    "luxueux": "cinematic strings, elegant piano, luxury hotel lobby ambiance",
-    "naturel": "nature-inspired ambient, soft wind instruments, organic textures",
+    "romantic": "romantic piano melody, soft strings, sunset warmth",
+    "friendly": "upbeat latin acoustic, gentle percussion, happy terrace vibes",
+    "luxurious": "cinematic strings, elegant piano, luxury hotel lobby ambiance",
+    "natural": "nature-inspired ambient, soft wind instruments, organic textures",
+    "art_nouveau": "elegant piano with subtle strings, refined Art Nouveau atmosphere",
+    "colorful": "upbeat Mediterranean acoustic, lively percussion, vibrant atmosphere",
 }
 
 # ---------------------------------------------------------------------------
@@ -24,15 +26,19 @@ AMBIANCE_MUSIC_MAP = {
 # ---------------------------------------------------------------------------
 
 CATEGORY_MUSIC_MAP = {
-    "chambre": "soft piano, warm ambient pads, cozy bedroom atmosphere",
-    "exterieur": "Mediterranean acoustic guitar, warm breeze atmosphere",
-    "terrasse": "bossa nova, light percussion, outdoor cafe in the sun",
-    "salle_bain": "spa ambient, water sounds, peaceful minimalist piano",
+    "room": "soft piano, warm ambient pads, cozy bedroom atmosphere",
+    "exterior": "Mediterranean acoustic guitar, warm breeze atmosphere",
+    "common": "elegant lobby music, soft jazz piano, welcoming warmth",
+    "food": "jazz trio, upright bass, candlelit dinner atmosphere",
+    "experience": "cinematic ambient, uplifting tones, moment of discovery",
+    "destination": "Mediterranean world music, acoustic guitar, travel adventure",
+    # Subcategory-level fallbacks (kept for finer-grained matching)
+    "terrace": "bossa nova, light percussion, outdoor cafe in the sun",
+    "bathroom": "spa ambient, water sounds, peaceful minimalist piano",
     "restaurant": "jazz trio, upright bass, candlelit dinner atmosphere",
     "patio": "acoustic guitar, birdsong elements, Mediterranean patio serenity",
     "reception": "elegant lobby music, soft jazz piano, welcoming warmth",
     "architecture": "cinematic ambient, subtle reverb piano, awe and wonder",
-    "destination": "Mediterranean world music, acoustic guitar, travel adventure",
 }
 
 # ---------------------------------------------------------------------------
@@ -40,10 +46,10 @@ CATEGORY_MUSIC_MAP = {
 # ---------------------------------------------------------------------------
 
 MOOD_MUSIC_MAP = {
-    "drôle": "playful pizzicato strings, quirky percussion, cartoon-like whimsy",
-    "émouvant": "emotional piano, gentle strings crescendo, touching warmth",
-    "spectaculaire": "epic cinematic orchestra, building drums, reveal moment",
-    "poétique": "dreamy ambient piano, soft reverb, floating atmosphere",
+    "funny": "playful pizzicato strings, quirky percussion, cartoon-like whimsy",
+    "emotional": "emotional piano, gentle strings crescendo, touching warmth",
+    "spectacular": "epic cinematic orchestra, building drums, reveal moment",
+    "poetic": "dreamy ambient piano, soft reverb, floating atmosphere",
 }
 
 

@@ -17,38 +17,40 @@ load_dotenv(_project_root / ".env")
 
 MODEL = "claude-sonnet-4-20250514"
 
-SYSTEM_PROMPT = """Tu es un expert en photographie hôtelière et marketing Instagram.
-Tu analyses les photos et vidéos de l'Hôtel Noucentista, un hôtel boutique Art Nouveau à Sitges (Barcelone), Espagne.
+SYSTEM_PROMPT = """You are an expert in hotel photography and Instagram marketing.
+You analyze photos and videos of Hotel Noucentista, a boutique Art Nouveau hotel in Sitges (Barcelona), Spain.
 
-L'hôtel a ces espaces principaux :
-- Chambres (suites, chambres doubles, chambres singles) avec décoration Art Nouveau
-- Espaces communs (lobby, salon, terrasse, couloirs, escaliers)
-- Extérieurs (façade, patio, vue sur mer, rue)
-- Gastronomie (petit-déjeuner, bar, salle à manger)
-- Expériences (spa, events, activités, vues panoramiques)
-- Destination (photos de Sitges : plages, rues, monuments, restaurants, paysages — pas l'hôtel lui-même)
+The hotel has these main spaces:
+- Rooms (suites, double rooms, single rooms) with Art Nouveau decor
+- Common areas (lobby, living_room, terrace, hallways, staircase)
+- Exteriors (facade, patio, sea view, street)
+- Food (breakfast, bar, dining_room)
+- Experiences (spa, events, activities, panoramic views)
+- Destination (photos of Sitges: beaches, streets, monuments, restaurants, landscapes — not the hotel itself)
 
-Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans commentaires)."""
+Respond ONLY with a valid JSON object (no markdown, no commentary)."""
 
-USER_PROMPT = """Analyse cette image d'hôtel et retourne un JSON avec exactement ces champs :
+USER_PROMPT = """Analyze this hotel image and return JSON with exactly these fields:
 
 {
-  "category": "chambre|commun|exterieur|gastronomie|experience|destination",
-  "subcategory": "nom spécifique de l'espace (ex: suite, terrasse, piscine, petit_dejeuner, spa)",
-  "ambiance": ["liste de tags d'ambiance: lumineux, chaleureux, romantique, moderne, art_nouveau, mediterraneen, intime, elegant, naturel, colore"],
-  "season": ["printemps|ete|automne|hiver|toute_saison — quand cette photo serait idéale pour Instagram"],
-  "elements": ["liste des éléments visibles: lit, vue_mer, piscine, terrasse, mobilier, plantes, lumiere_naturelle, decoration, nourriture, etc."],
+  "category": "room|common|exterior|food|experience|destination",
+  "subcategory": "specific space name in English snake_case (e.g. suite, terrace, pool, breakfast, spa)",
+  "ambiance": ["list of mood tags in English snake_case: bright, warm, romantic, modern, art_nouveau, mediterranean, cozy, elegant, natural, colorful"],
+  "season": ["spring|summer|autumn|winter|any_season — when this photo would be ideal for Instagram"],
+  "elements": ["list of visible elements in English snake_case: bed, sea_view, pool, terrace, furniture, plants, natural_light, decor, food, etc."],
   "ig_quality": 8,
-  "description_fr": "Description courte en français pour usage interne (1 phrase)",
-  "description_en": "Short English description for search and retrieval (1 sentence)"
+  "description_fr": "One-sentence French description for internal use",
+  "description_en": "One-sentence English description for search and retrieval"
 }
 
-Critères pour ig_quality (1-10) :
-- 9-10: Photo exceptionnelle, prête pour Instagram (composition, lumière, qualité pro)
-- 7-8: Bonne photo, utilisable avec peu de retouche
-- 5-6: Photo correcte mais pas idéale (angle, lumière, mise en scène)
-- 3-4: Photo médiocre (floue, mal cadrée, peu attrayante)
-- 1-2: Photo inutilisable (très floue, sombre, hors sujet)"""
+Criteria for ig_quality (1-10):
+- 9-10: Exceptional photo, Instagram-ready (composition, light, pro quality)
+- 7-8: Good photo, usable with minimal retouching
+- 5-6: Decent photo but not ideal (angle, light, staging)
+- 3-4: Mediocre photo (blurry, poorly framed, unattractive)
+- 1-2: Unusable photo (very blurry, dark, off-topic)
+
+IMPORTANT: All values must be in English snake_case. Keep `art_nouveau` as a proper noun."""
 
 
 def _parse_json_response(text: str) -> dict:

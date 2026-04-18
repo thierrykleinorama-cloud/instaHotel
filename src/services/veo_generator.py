@@ -79,19 +79,24 @@ def veo_photo_to_video(
     model: str = "veo-3.1-fast",
     negative_prompt: str = "blurry, distorted, low quality, text overlay, watermark",
     resolution: str = "720p",
+    reference_character_ids: Optional[list[str]] = None,
 ) -> dict:
     """Convert a photo to video using Google Veo 3.1.
 
     Args:
-        image_bytes: source photo
+        image_bytes: source photo (the setting)
         prompt: motion/scene prompt
         duration: 4, 6, or 8 seconds
         aspect_ratio: "9:16" (reel), "16:9"
         model: "veo-3.1-fast" or "veo-3.1"
         negative_prompt: what to avoid
         resolution: "720p" or "1080p"
+        reference_character_ids: optional list of character UUIDs whose
+            canonical reference photos should be loaded as Veo asset references
+            to preserve their appearance in the output. Max 2 (Veo limit is 3
+            total references, 1 is already used as base image).
 
-    Returns: {video_bytes, duration_sec, aspect_ratio, _cost}
+    Returns: {video_bytes, duration_sec, aspect_ratio, _cost, characters_used}
     """
     client = _get_genai_client()
 
@@ -107,22 +112,79 @@ def veo_photo_to_video(
     if negative_prompt:
         full_prompt = f"{prompt}. Avoid: {negative_prompt}"
 
-    # Create the image reference
-    image = types.Image(image_bytes=png_bytes, mime_type="image/png")
+    # Load character reference images if requested.
+    # Veo 3.1 on the Gemini API supports reference_images with these constraints
+    # (verified 2026-04-15, see memory/project_characters_flow.md):
+    #   - duration_seconds MUST be 8
+    #   - negative_prompt MUST NOT be passed
+    #   - `image=` (first-frame) MUST NOT be passed
+    #   - Max 3 references total, all ASSET type
+    #   - veo-3.1-lite does NOT support reference_images
+    char_references = []
+    characters_loaded = []
+    if reference_character_ids:
+        try:
+            from src.services.characters_queries import load_character_reference_images
+            loaded = load_character_reference_images(reference_character_ids)
+            # Veo: max 3 total refs, 1 reserved for hotel scene → 2 char ref slots.
+            # Pick up to 2 ref images (multiple images per character are now possible).
+            seen_names = set()
+            for char, img_bytes in loaded[:2]:
+                ref_png = _ensure_png(img_bytes)
+                char_references.append(
+                    types.VideoGenerationReferenceImage(
+                        image=types.Image(image_bytes=ref_png, mime_type="image/png"),
+                        reference_type=types.VideoGenerationReferenceType.ASSET,
+                    )
+                )
+                if char["name"] not in seen_names:
+                    characters_loaded.append(char["name"])
+                    seen_names.add(char["name"])
+        except Exception as e:
+            print(f"[veo] character reference loading failed: {e}")
 
-    # Generate video (async operation)
-    operation = client.models.generate_videos(
-        model=model_info["model_id"],
-        prompt=full_prompt,
-        image=image,
-        config=types.GenerateVideosConfig(
+    use_refs = bool(char_references)
+
+    if use_refs:
+        # Force duration to 8s — Veo rejects refs at any other duration.
+        if duration != 8:
+            print(f"[veo] duration forced from {duration}s to 8s (required with refs)")
+            duration = 8
+        # Hotel photo joins the reference list as the scene asset.
+        hotel_ref = types.VideoGenerationReferenceImage(
+            image=types.Image(image_bytes=png_bytes, mime_type="image/png"),
+            reference_type=types.VideoGenerationReferenceType.ASSET,
+        )
+        all_refs = [hotel_ref] + char_references
+
+        config_kwargs = dict(
+            aspect_ratio=aspect_ratio,
+            number_of_videos=1,
+            duration_seconds=8,
+            person_generation="allow_adult",
+            reference_images=all_refs,
+            # NB: negative_prompt intentionally omitted — rejected with refs.
+        )
+        operation = client.models.generate_videos(
+            model=model_info["model_id"],
+            prompt=prompt,  # plain prompt, not full_prompt (which appends negatives)
+            config=types.GenerateVideosConfig(**config_kwargs),
+        )
+    else:
+        # Image-to-video mode: first frame = hotel photo, any supported duration.
+        config_kwargs = dict(
             aspect_ratio=aspect_ratio,
             number_of_videos=1,
             duration_seconds=duration,
             negative_prompt=negative_prompt,
             person_generation="allow_adult",
-        ),
-    )
+        )
+        operation = client.models.generate_videos(
+            model=model_info["model_id"],
+            prompt=full_prompt,
+            image=types.Image(image_bytes=png_bytes, mime_type="image/png"),
+            config=types.GenerateVideosConfig(**config_kwargs),
+        )
 
     # Poll for completion
     max_wait = 600  # 10 minutes
@@ -171,5 +233,6 @@ def veo_photo_to_video(
         "video_bytes": video_data,
         "duration_sec": duration,
         "aspect_ratio": aspect_ratio,
+        "characters_used": characters_loaded,
         "_cost": {"operation": f"photo_to_video_{model}", "cost_usd": cost},
     }
