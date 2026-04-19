@@ -80,6 +80,7 @@ def veo_photo_to_video(
     negative_prompt: str = "blurry, distorted, low quality, text overlay, watermark",
     resolution: str = "720p",
     reference_character_ids: Optional[list[str]] = None,
+    end_image_bytes: Optional[bytes] = None,
 ) -> dict:
     """Convert a photo to video using Google Veo 3.1.
 
@@ -145,6 +146,11 @@ def veo_photo_to_video(
 
     use_refs = bool(char_references)
 
+    # Veo on the Gemini API does not support last_frame (tested 2026-04-19,
+    # both image-to-video and reference modes return 400). Vertex-only feature.
+    if end_image_bytes:
+        print("[veo] end_image_bytes provided but last_frame not supported on Gemini API — skipping")
+
     if use_refs:
         # Force duration to 8s — Veo rejects refs at any other duration.
         if duration != 8:
@@ -163,11 +169,10 @@ def veo_photo_to_video(
             duration_seconds=8,
             person_generation="allow_adult",
             reference_images=all_refs,
-            # NB: negative_prompt intentionally omitted — rejected with refs.
         )
         operation = client.models.generate_videos(
             model=model_info["model_id"],
-            prompt=prompt,  # plain prompt, not full_prompt (which appends negatives)
+            prompt=prompt,
             config=types.GenerateVideosConfig(**config_kwargs),
         )
     else:

@@ -168,29 +168,30 @@
 - [x] **Carousel support (B2)** — Multi-image IG posts. `carousel_drafts` DB table, `carousel_queries.py` CRUD, `publisher.py` carousel functions, `13_Carousel_Builder.py` AI Lab page with AI-assisted (theme suggestions, image selection, caption generation) + manual picker, reorder, IG preview with dots/arrows, save/publish. Optimized with paginated gallery + dict lookups.
 - [x] **Persistent cost tracking** — `cost_log` DB table, `cost_tracker.py` service (`log_cost` fire-and-forget in all 8 services, 13 call sites), `14_Cost_Dashboard.py` with KPI metrics + cost-by-tool breakdown + filterable recent calls table. All API calls auto-logged: Claude, Veo, Kling, Stability AI, Replicate, MusicGen.
 - [x] **Creative Scenarios on Veo page** — Added "3 Creative Scenarios" and "From scenario" prompt modes to Veo page. Generate, review, accept/reject scenarios, load prompts directly into video generation.
-- [ ] **End image support** — Show hotel facade at end of Kling videos (needs `end_image` param for transitions)
-- [ ] **Seasonal & Element Variants** — Transform photos to different seasons (summer → winter), add elements, object removal. Placeholder prompt exists: `SEASONAL_TEMPLATE` in creative_transform.py but not wired.
-- [ ] **AI Humor** — Dedicated humor scenario mode for creative transforms
+- [x] **End image support** — Hotel facade (IMG_6723, 9/10) auto-appended as last frame of every reel. Kling V3 Omni uses `end_image` param (tested, works). Veo `last_frame` not supported on Gemini API (Vertex-only) — logs warning and skips. `FACADE_MEDIA_ID` constant in creative_transform.py, cached after first load. DONE 2026-04-19.
+- [ ] **Auto-retarget on generation** — When source photo ratio doesn't match target (4:5 for feed, 9:16 for reel), auto-outpaint via Stability AI before generating content. Should happen automatically in `batch_generator.py` and `photo_to_video()` — no manual step.
+- [ ] **Translate AI prompts to English** — System/user prompt templates in `src/prompts/caption_generation.py`, `creative_transform.py`, `tone_variants.py` are in French. Move to English for better model performance. Output captions stay ES (primary) / EN / FR.
+- [ ] **Separate HOTEL_CONTEXT** — Split `HOTEL_CONTEXT` in `src/prompts/creative_transform.py` into (1) hotel identity/facts (Art Nouveau, 1889, 12 rooms, cats) and (2) Instagram content strategy ideas ("show behind-the-scenes", "golden hour"). Identity used in all prompts, strategy only in scenario generation.
+- [ ] **Enrich DESTINATION_CONTEXT** — Add Daniela's restaurant picks, local tips, seasonal events to `src/prompts/destination_content.py`. Currently a placeholder. Not editable from app — see Sitges KB page task.
+- [ ] **Seasonal & Element Variants** — Transform existing photos to different seasons (summer terrace → winter with cozy lighting, autumn leaves). Add elements to empty scenes (guests, flowers). Uses image-to-image models. `SEASONAL_TEMPLATE` prompt exists in creative_transform.py but not wired. Task: wire to AI Enhancement page as "Seasonal Variants" tab, select photo + target season/elements, generate variant, save to media_library with parent_media_id.
+- [ ] **AI Humor** — Dedicated humor scenario mode. Force all scenarios to be comedic (cats doing human things, unexpected situations, visual puns). Add "Humor Mode" toggle to Photo to Video page that changes the scenario prompt to prioritize comedy. Funny pet content performs very well on Instagram engagement.
 
 ### AI Lab Direct Publish — DONE 2026-03-11
 - [x] **Standalone IG publish from AI Lab pages** — Shared `render_publish_to_ig()` component in `app/components/ig_publish.py`. Caption + hashtags input, confirmation dialog, upload → IG Graph API flow with cleanup. Added to: Veo Video (after video generation), Photo-to-Video (Tab 1 video + Tab 3 composite), Carousel Builder (reel export, replacing inline code). Credentials check shows warning if `INSTAGRAM_ACCESS_TOKEN` not configured.
 
 ### Publishing & Analytics (Phase 5b)
-- [ ] **Optimal posting times** — Instagram Graph API insights for best times to post
-- [ ] **Post performance table** — `post_performance` table (engagement metrics)
-- [ ] **Feedback loop** — Pull IG metrics 48h after publication, feed back into scoring
-- [ ] **Publication dashboard** — Stats, best performing content, trends
-- [ ] **Auto-push validated slots** — No manual export, direct queue
+- [ ] **Optimal posting times** — Call IG Graph API `/media/insights` to analyze when existing posts got most engagement. Recommend best hours per day of week.
+- [ ] **Post performance table** — New `post_performance` DB table. After publishing, store: impressions, reach, likes, comments, saves, shares, video views. Pulled via IG API.
+- [ ] **Feedback loop** — Automated job (or manual button) that runs 48h after publication, pulls IG metrics, stores them. Feed back into media scoring — photos that perform well get higher scores, flops get deprioritized.
+- [ ] **Publication dashboard** — Streamlit page: total posts published, avg engagement rate, best-performing posts, trend over time, cost-per-engagement.
+- [ ] **Auto-push validated slots** — Scheduler that publishes approved posts at optimal times automatically. No manual Publish page click needed.
 - [ ] **Replicabilite multi-hotel** — Malaga property support
 
 ### UX Polish (low priority)
 - [ ] **Rethink Content Drafts page** — Mostly redundant now that Production Pipeline has inline review. Consider: remove entirely (AI Lab pages have their own accept/reject), or repurpose as "Prompt Improvement" page showing rejected items grouped by reason.
 
 ### Prompts & Content Quality
-- [ ] **Translate prompts to English** — Most prompts in `/src/prompts/` are in French (caption_generation, creative_transform, tone_variants). destination_content is already English.
-- [ ] **Separate HOTEL_CONTEXT** — Split into (1) hotel identity/facts and (2) "what works on Instagram" ideas list. Currently both in `HOTEL_CONTEXT` in `src/prompts/creative_transform.py`.
-- [ ] **Enrich DESTINATION_CONTEXT** — Add owner's specific restaurant recommendations, favorite spots to `src/prompts/destination_content.py` (placeholder currently)
-- [ ] **Sitges Knowledge Base page** — Streamlit admin page to manage Sitges knowledge dynamically instead of static `DESTINATION_CONTEXT`
+- [ ] **Sitges Knowledge Base page** — Streamlit admin page where Daniela can manage local knowledge (restaurants, activities, insider tips, seasonal events) without editing Python files. Stored in a Supabase table (`sitges_knowledge`). Caption generator queries this table instead of static `DESTINATION_CONTEXT` string. Benefit: Daniela updates a restaurant → captions immediately reflect it.
 
 ### Monitoring & Ops
 - [ ] **API change monitor agent** — Weekly automated check of all tool providers (Replicate, Google Gemini, Stability AI, Anthropic) for new models, pricing changes, new API capabilities. Report via WhatsApp.

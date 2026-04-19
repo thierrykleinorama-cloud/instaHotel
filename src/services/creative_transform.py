@@ -262,6 +262,35 @@ def generate_scenarios(
 # Photo-to-Video via Replicate (Kling v2.1)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# End image (hotel facade) — appended as last frame of every reel
+# ---------------------------------------------------------------------------
+
+# Best facade photo from media_library (9/10 quality, golden evening light)
+FACADE_MEDIA_ID = "d6e19c44-dcbc-4961-a998-50af8583944b"
+
+_facade_cache: Optional[bytes] = None
+
+def _load_facade_image() -> Optional[bytes]:
+    """Load and cache the hotel facade image for use as end frame."""
+    global _facade_cache
+    if _facade_cache is not None:
+        return _facade_cache
+    try:
+        from src.database import get_supabase, TABLE_MEDIA_LIBRARY
+        from src.services.google_drive import download_file_bytes
+        client = get_supabase()
+        row = client.table(TABLE_MEDIA_LIBRARY).select("drive_file_id").eq("id", FACADE_MEDIA_ID).limit(1).execute().data
+        if not row:
+            return None
+        raw = download_file_bytes(row[0]["drive_file_id"])
+        _facade_cache = _ensure_png(raw)
+        return _facade_cache
+    except Exception as e:
+        print(f"[end_image] facade load failed: {e}")
+        return None
+
+
 # Available video models
 VIDEO_MODELS = {
     "kling-v3-omni": {
@@ -366,17 +395,23 @@ def photo_to_video(
     negative_prompt: str = "blurry, distorted, low quality, text overlay, watermark",
     resolution: str = "720p",
     reference_character_ids: Optional[list[str]] = None,
+    use_end_image: bool = True,
 ) -> dict:
     """Convert a photo to video.
 
     Dispatches to the correct backend based on model provider:
     - "replicate" kling-v3-omni → Kling V3 Omni (up to 7 character refs via <<<image_N>>>)
-    - "replicate" kling-v3-omni → Kling V3 Omni (up to 7 character refs via <<<image_N>>>)
     - "google" → Veo 3.1 via Gemini API (up to 2 character refs as ASSET references)
+
+    When use_end_image=True (default), the hotel facade is appended as the
+    last frame so every reel ends with a branded shot.
 
     Returns: {video_bytes, duration_sec, aspect_ratio, _cost, characters_used}
     """
     model_info = VIDEO_MODELS[model]
+
+    # Load facade end image (shared across all models)
+    end_image_bytes = _load_facade_image() if use_end_image else None
 
     # Dispatch to Veo for Google models
     if model_info.get("provider") == "google":
@@ -385,6 +420,7 @@ def photo_to_video(
             image_bytes, prompt, duration, aspect_ratio, model,
             negative_prompt, resolution,
             reference_character_ids=reference_character_ids,
+            end_image_bytes=end_image_bytes,
         )
 
     client = _get_replicate_client()
@@ -401,11 +437,14 @@ def photo_to_video(
         "duration": duration,
     }
 
-    # Kling V3 Omni: add character references + aspect_ratio
+    # Kling V3 Omni: add end_image, character references, aspect_ratio
     characters_loaded = []
     if model == "kling-v3-omni":
         input_params["aspect_ratio"] = aspect_ratio
         input_params["mode"] = "standard"
+        if end_image_bytes:
+            end_b64 = base64.b64encode(end_image_bytes).decode()
+            input_params["end_image"] = f"data:image/png;base64,{end_b64}"
         ref_extras, characters_loaded = _build_kling_v3_omni_refs(
             image_bytes, prompt, reference_character_ids,
         )
