@@ -369,7 +369,27 @@ def _generate_reel_post(post_id, media, post_type, season, tone, model):
         )
 
     total_cost += video_result.get("_cost", {}).get("cost_usd", 0)
-    video_url = video_result.get("video_url", "")
+
+    # Upload video to Supabase Storage + Google Drive
+    from src.services.publisher import upload_to_supabase_storage
+    from datetime import datetime
+    _ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    _stem = media.get("file_name", "video").rsplit(".", 1)[0][:40]
+    _fname = f"{_stem}_reel_{_ts}.mp4"
+    video_url = ""
+    _drive_fid = None
+    if video_result.get("video_bytes"):
+        try:
+            video_url = upload_to_supabase_storage(video_result["video_bytes"], _fname, "video/mp4")
+        except Exception as _e:
+            print(f"[batch] Supabase Storage upload failed: {_e}")
+        try:
+            from src.services.google_drive import upload_file_to_drive, ensure_generated_folders
+            folders = ensure_generated_folders()
+            _drive_result = upload_file_to_drive(video_result["video_bytes"], _fname, "video/mp4", folders["videos"])
+            _drive_fid = _drive_result["id"]
+        except Exception as _e:
+            print(f"[batch] Drive upload failed: {_e}")
 
     # Save video job
     job_row = save_video_job(
@@ -379,6 +399,7 @@ def _generate_reel_post(post_id, media, post_type, season, tone, model):
         cost_usd=video_result.get("_cost", {}).get("cost_usd", 0),
         provider="veo" if post_type == "reel-veo" else "replicate",
         params={"post_type": post_type, "post_id": post_id},
+        drive_file_id=_drive_fid,
     )
     video_job_id = job_row.get("id") if job_row else None
 
