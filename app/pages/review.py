@@ -61,14 +61,15 @@ TYPE_BADGE_LABELS = {
 }
 
 # Status tabs
-tab_review, tab_approved, tab_discarded, tab_published = st.tabs(
-    ["To Review", "Approved", "Discarded", "Published"]
+tab_review, tab_approved, tab_discarded, tab_failed, tab_published = st.tabs(
+    ["To Review", "Approved", "Discarded", "Failed", "Published"]
 )
 
 STATUS_MAP = {
     "To Review": ["draft", "review"],
     "Approved": ["approved"],
     "Discarded": ["discarded"],
+    "Failed": ["failed"],
     "Published": ["published"],
 }
 
@@ -253,6 +254,21 @@ def _render_post_card(post: dict, allow_actions: bool = True):
             if pub_date:
                 st.caption(f"Published: {pub_date}")
 
+        elif status == "failed":
+            err = post.get("publish_error", "")
+            if err:
+                st.error(f"Error: {err}")
+            if st.button("Retry this post", key=f"retry_{post_id}"):
+                from src.services.batch_generator import retry_failed_posts
+                with st.spinner("Retrying..."):
+                    res = retry_failed_posts(post_ids=[post_id])
+                if res["succeeded"] > 0:
+                    st.success("Retried successfully!")
+                    st.rerun()
+                else:
+                    errs = [r["error"] for r in res["results"] if r.get("error")]
+                    st.error(f"Retry failed: {errs[0] if errs else 'unknown'}")
+
         elif status == "approved":
             st.caption("Ready to publish — go to Publish page")
 
@@ -293,6 +309,25 @@ with tab_approved:
 
 with tab_discarded:
     _render_tab(["discarded"], allow_actions=False)
+
+with tab_failed:
+    failed_posts = fetch_posts_multi_status(["failed"], limit=50)
+    if failed_posts:
+        st.caption(f"{len(failed_posts)} failed post(s)")
+        if st.button("Retry All Failed", type="primary", key="retry_all_failed"):
+            from src.services.batch_generator import retry_failed_posts
+            _failed_ids = [p["id"] for p in failed_posts]
+            _bar = st.progress(0, text="Retrying failed posts...")
+            def _progress(cur, total, msg):
+                _bar.progress(cur / max(total, 1), text=msg)
+            res = retry_failed_posts(post_ids=_failed_ids, progress_cb=_progress)
+            _bar.empty()
+            st.success(f"Done: {res['succeeded']} succeeded, {res['still_failed']} still failed")
+            st.rerun()
+        for post in failed_posts:
+            _render_post_card(post, allow_actions=True)
+    else:
+        st.info("No failed posts.")
 
 with tab_published:
     _render_tab(["published"], allow_actions=False)

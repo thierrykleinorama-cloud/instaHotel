@@ -491,6 +491,79 @@ def _fetch_recent_post_media_ids(lookback_days: int = 14) -> set[str]:
         return set()
 
 
+def retry_failed_posts(
+    batch_id: Optional[str] = None,
+    post_ids: Optional[list[str]] = None,
+    progress_cb: Optional[Callable[[int, int, str], None]] = None,
+) -> dict:
+    """Retry generation for failed posts without losing successful ones.
+
+    Pass either batch_id (retries all failed in that batch) or explicit post_ids.
+    Re-runs the generation step for each failed post using its existing metadata
+    (media_id, post_type, category, season, tone). Does NOT create new posts —
+    updates the existing rows in place.
+
+    Returns: {retried: int, succeeded: int, still_failed: int, results: [...]}
+    """
+    from src.services.caption_generator import generate_captions
+    from src.services.google_drive import download_file_bytes
+    from src.utils import encode_image_bytes
+
+    client = get_supabase()
+
+    if batch_id:
+        failed = client.table(TABLE_POSTS).select("*").eq("batch_id", batch_id).eq("status", "failed").execute().data
+    elif post_ids:
+        failed = client.table(TABLE_POSTS).select("*").in_("id", post_ids).eq("status", "failed").execute().data
+    else:
+        failed = client.table(TABLE_POSTS).select("*").eq("status", "failed").order("created_at", desc=True).limit(50).execute().data
+
+    if not failed:
+        return {"retried": 0, "succeeded": 0, "still_failed": 0, "results": []}
+
+    all_media = _fetch_analyzed_media()
+    media_map = {m["id"]: m for m in all_media}
+    results = []
+
+    for i, post in enumerate(failed):
+        post_id = post["id"]
+        post_type = post["post_type"]
+        media_id = post.get("media_id")
+        season = post.get("season") or get_current_season(date.today())
+        tone = post.get("tone") or "default"
+
+        if progress_cb:
+            progress_cb(i, len(failed), f"Retrying {post_type} ({post_id[:8]})...")
+
+        media = media_map.get(media_id)
+        if not media:
+            results.append({"post_id": post_id, "status": "error", "error": "Media not found"})
+            continue
+
+        # Reset status to draft
+        update_post(post_id, {"status": "draft", "publish_error": None})
+
+        try:
+            if post_type == "feed":
+                _generate_feed_post(post_id, media, season, tone, "claude-sonnet-4-6", False)
+            elif post_type == "carousel":
+                _generate_carousel_post(post_id, media, all_media, season, tone, "claude-sonnet-4-6", set())
+            elif post_type.startswith("reel"):
+                _generate_reel_post(post_id, media, post_type, season, tone, "claude-sonnet-4-6")
+            results.append({"post_id": post_id, "status": "ok"})
+        except Exception as e:
+            update_post(post_id, {"status": "failed", "publish_error": str(e)})
+            results.append({"post_id": post_id, "status": "error", "error": str(e)})
+
+    if progress_cb:
+        progress_cb(len(failed), len(failed), "Done!")
+
+    ok = sum(1 for r in results if r["status"] == "ok")
+    err = sum(1 for r in results if r["status"] == "error")
+
+    return {"retried": len(failed), "succeeded": ok, "still_failed": err, "results": results}
+
+
 def estimate_batch_cost(recipe: list[dict], count: int) -> dict:
     """Estimate the cost of a batch run.
 

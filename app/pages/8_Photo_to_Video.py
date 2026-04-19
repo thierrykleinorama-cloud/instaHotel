@@ -227,10 +227,19 @@ with tab_video:
 
         # Duration options depend on the model
         dur_options = get_model_durations(video_model)
-        duration = st.select_slider("Duration (sec)", dur_options, value=dur_options[0], key="cs_dur")
+        _has_chars = bool(st.session_state.get("cs_characters_used"))
+        _is_veo = VIDEO_MODELS[video_model].get("provider") == "google"
+        _force_8s = _has_chars and _is_veo
+
+        if _force_8s:
+            duration = 8
+            st.info("Duration locked to **8s** — required by Veo when character references are active.", icon=":material/schedule:")
+            st.select_slider("Duration (sec)", dur_options, value=8, key="cs_dur", disabled=True)
+        else:
+            duration = st.select_slider("Duration (sec)", dur_options, value=dur_options[0], key="cs_dur")
 
         ar_options = ["9:16", "16:9", "1:1"]
-        if VIDEO_MODELS[video_model].get("provider") == "google":
+        if _is_veo:
             ar_options = ["9:16", "16:9"]  # Veo doesn't support 1:1
         aspect_ratio = st.selectbox("Aspect Ratio", ar_options, key="cs_ar")
 
