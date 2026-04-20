@@ -230,6 +230,8 @@ def _generate_feed_post(post_id, media, season, tone, model, include_image):
         "caption_en": short.get("en", ""),
         "caption_fr": short.get("fr", ""),
         "hashtags": hashtags,
+        "tone": tone,
+        "theme_name": media.get("description_en", "") or media.get("category", "room"),
         "total_cost_usd": cost,
         "status": "review",
     })
