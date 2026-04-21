@@ -214,6 +214,18 @@ def upload_file_to_drive(
 _FOLDER_CACHE: dict[str, str] = {}
 
 
+def upload_to_main_folder(file_bytes: bytes, filename: str, mime_type: str) -> dict:
+    """Upload a user-provided file to the main Drive folder (DRIVE_FOLDER_ID).
+
+    Used by the Upload Media page. Files land alongside the original library —
+    no subfolder, since all media are ultimately user uploads.
+    """
+    folder_id = os.getenv("DRIVE_FOLDER_ID")
+    if not folder_id:
+        raise ValueError("DRIVE_FOLDER_ID not set")
+    return upload_file_to_drive(file_bytes, filename, mime_type, folder_id)
+
+
 def ensure_generated_folders() -> dict[str, str]:
     """Ensure Generated/Videos, Generated/Music, Generated/Enhanced exist.
 

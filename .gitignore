@@ -27,6 +27,7 @@ Thumbs.db
 *token*.json
 *.pem
 *.key
+.drive_token_for_streamlit.txt
 
 # Streamlit
 .streamlit/secrets.toml

@@ -172,6 +172,86 @@ def process_video(file_info: dict, dry_run: bool = False) -> dict:
     return row
 
 
+def process_image_bytes(
+    image_bytes: bytes,
+    filename: str,
+    mime_type: str,
+    drive_file_id: str,
+    file_size_bytes: int,
+) -> dict:
+    """Analyze an image from raw bytes and upsert to media_library.
+
+    Used by the Upload Media page after uploading to Drive.
+    """
+    image_b64 = encode_image_bytes(image_bytes, mime_type)
+    aspect_ratio = get_aspect_ratio(image_bytes)
+
+    analysis = _call_with_retry(analyze_image, image_b64)
+    raw_data = analysis.model_dump()
+
+    row = {
+        "drive_file_id": drive_file_id,
+        "file_name": filename,
+        "mime_type": mime_type,
+        "file_size_bytes": file_size_bytes,
+        "media_type": "image",
+        "category": analysis.category,
+        "subcategory": analysis.subcategory,
+        "ambiance": analysis.ambiance,
+        "season": analysis.season,
+        "elements": analysis.elements,
+        "ig_quality": analysis.ig_quality,
+        "aspect_ratio": aspect_ratio,
+        "description_fr": analysis.description_fr,
+        "description_en": analysis.description_en,
+        "analysis_raw": raw_data,
+        "analysis_model": MODEL,
+        "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        "status": "analyzed",
+    }
+    _upsert_media(row)
+    return row
+
+
+def process_video_bytes(
+    video_bytes: bytes,
+    filename: str,
+    mime_type: str,
+    drive_file_id: str,
+    file_size_bytes: int,
+) -> dict:
+    """Analyze a video from raw bytes and upsert to media_library.
+
+    Used by the Upload Media page after uploading to Drive.
+    """
+    result = _call_with_retry(analyze_video, video_bytes, filename)
+
+    row = {
+        "drive_file_id": drive_file_id,
+        "file_name": filename,
+        "mime_type": mime_type,
+        "file_size_bytes": file_size_bytes,
+        "media_type": "video",
+        "category": result.get("category"),
+        "subcategory": result.get("subcategory"),
+        "ambiance": result.get("ambiance", []),
+        "season": result.get("season", []),
+        "elements": result.get("elements", []),
+        "ig_quality": result.get("ig_quality"),
+        "aspect_ratio": result.get("aspect_ratio"),
+        "description_fr": result.get("description_fr"),
+        "description_en": result.get("description_en"),
+        "duration_seconds": result.get("duration_seconds"),
+        "scenes": result.get("scenes"),
+        "analysis_raw": result.get("analysis_raw"),
+        "analysis_model": result.get("analysis_model", MODEL),
+        "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        "status": "analyzed",
+    }
+    _upsert_media(row)
+    return row
+
+
 def run_indexer(
     folder_id: Optional[str] = None,
     limit: Optional[int] = None,
