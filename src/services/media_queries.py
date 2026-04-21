@@ -35,6 +35,35 @@ def fetch_media_by_id(media_id: str) -> Optional[dict]:
     return result.data[0] if result.data else None
 
 
+def find_duplicate_by_name_size(filename: str, size_bytes: int) -> Optional[dict]:
+    """Return existing media row if filename AND file_size_bytes match.
+
+    Used to detect real duplicates on user upload. Not cached — must be fresh.
+    """
+    client = get_supabase()
+    result = (
+        client.table(TABLE_MEDIA_LIBRARY)
+        .select("id, drive_file_id, file_name, file_size_bytes, analyzed_at")
+        .eq("file_name", filename)
+        .eq("file_size_bytes", size_bytes)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def find_any_with_filename(filename: str) -> list[dict]:
+    """Return all rows with this filename (any size). Used to detect name collisions."""
+    client = get_supabase()
+    result = (
+        client.table(TABLE_MEDIA_LIBRARY)
+        .select("id, file_name, file_size_bytes")
+        .eq("file_name", filename)
+        .execute()
+    )
+    return result.data
+
+
 def update_media_tags(media_id: str, updates: dict) -> bool:
     """Update media_library row and clear cache."""
     client = get_supabase()

@@ -42,6 +42,7 @@ pg = st.navigation(
         "Media Library": [
             st.Page("pages/1_Stats.py", title="Stats", icon=":material/bar_chart:"),
             st.Page("pages/2_Gallery.py", title="Gallery", icon=":material/photo_library:"),
+            st.Page("pages/5_Upload_Media.py", title="Upload Media", icon=":material/upload:"),
             st.Page("pages/3_Image_Details.py", title="Image Details", icon=":material/image:"),
             st.Page("pages/4_Video_Details.py", title="Video Details", icon=":material/videocam:"),
         ],
