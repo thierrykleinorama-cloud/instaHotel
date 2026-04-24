@@ -25,9 +25,12 @@ Thumbs.db
 # Credentials (never commit!)
 *credentials*.json
 *token*.json
+*service_account*.json
 *.pem
 *.key
 .drive_token_for_streamlit.txt
+.veo_key_for_streamlit.txt
+.cloud_secrets_missing.txt
 
 # Streamlit
 .streamlit/secrets.toml

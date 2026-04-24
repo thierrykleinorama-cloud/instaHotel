@@ -104,6 +104,21 @@ def _fetch_video_info(video_job_id: str) -> dict:
     return result.data[0] if result.data else {}
 
 
+def _fetch_scenario_info(scenario_id: str) -> dict:
+    """Fetch scenario used to generate a reel video."""
+    if not scenario_id:
+        return {}
+    result = (
+        get_supabase()
+        .table("generated_scenarios")
+        .select("id, title, description, motion_prompt, mood, caption_hook, rating, status, characters_used")
+        .eq("id", scenario_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else {}
+
+
 def _fetch_carousel_info(carousel_draft_id: str) -> dict:
     """Fetch carousel draft for preview."""
     if not carousel_draft_id:
@@ -214,6 +229,27 @@ def _render_post_card(post: dict, allow_actions: bool = True):
             hashtags = post.get("hashtags") or []
             if hashtags:
                 st.caption(" ".join(f"#{h}" for h in hashtags[:10]))
+
+        # Scenario (reels only — shows the original creative brief behind the video)
+        if post_type.startswith("reel") and post.get("scenario_id"):
+            scenario = _fetch_scenario_info(post["scenario_id"])
+            if scenario:
+                with st.expander(f":violet[Scenario] — {scenario.get('title', '(untitled)')}", expanded=False):
+                    if scenario.get("description"):
+                        st.markdown(f"**Concept**: {scenario['description']}")
+                    if scenario.get("mood"):
+                        st.caption(f"Mood: {scenario['mood']}")
+                    chars = scenario.get("characters_used") or []
+                    if chars:
+                        st.caption(f"Characters: {', '.join(chars)}")
+                    if scenario.get("caption_hook"):
+                        st.markdown(f"**Hook**: *{scenario['caption_hook']}*")
+                    if scenario.get("motion_prompt"):
+                        st.markdown("**Motion prompt sent to video model**:")
+                        st.code(scenario["motion_prompt"], language=None)
+                    rating = scenario.get("rating")
+                    if rating:
+                        st.caption(f"Rating: {rating}/5")
 
         # Actions
         if allow_actions and status in ("draft", "review"):
