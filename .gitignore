@@ -31,6 +31,7 @@ Thumbs.db
 .drive_token_for_streamlit.txt
 .veo_key_for_streamlit.txt
 .cloud_secrets_missing.txt
+.sa_secret_for_streamlit.txt
 
 # Streamlit
 .streamlit/secrets.toml
