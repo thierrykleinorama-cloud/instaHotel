@@ -1,7 +1,13 @@
 """
-Google Drive service — OAuth, list media files, download bytes.
-Local dev: uses project-local token file (.google_token_drive.json).
-Streamlit Cloud: reads token JSON from st.secrets["GOOGLE_DRIVE_TOKEN"].
+Google Drive service — auth, list media files, download bytes.
+
+Auth priority (first match wins):
+  1. Service account JSON — never expires. Preferred.
+     - Local: file at SERVICE_ACCOUNT_FILE
+     - Streamlit Cloud: st.secrets["GOOGLE_SERVICE_ACCOUNT"]
+  2. User OAuth token (legacy) — expires when in Testing mode.
+     - Local: .google_token_drive.json
+     - Streamlit Cloud: st.secrets["GOOGLE_DRIVE_TOKEN"]
 """
 import io
 import json
@@ -12,6 +18,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
@@ -21,6 +28,7 @@ load_dotenv(_project_root / ".env")
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 CREDS_FILE = Path(r"c:\Users\michael\agents-lab\google_credentials.json")
 TOKEN_FILE = _project_root / ".google_token_drive.json"
+SERVICE_ACCOUNT_FILE = _project_root / ".service_account_drive.json"
 
 # MIME types we want to process
 IMAGE_MIMES = {
@@ -33,20 +41,37 @@ VIDEO_MIMES = {
 }
 MEDIA_MIMES = IMAGE_MIMES | VIDEO_MIMES
 
-# Singleton
+# Singletons — separate services for read (SA-preferred) and write (OAuth-only)
 _drive_service = None
 _drive_creds = None
+_drive_service_write = None
+_drive_creds_write = None
 
 
-def _authenticate() -> Credentials:
-    """Return credentials, creating/refreshing token as needed.
+def _load_service_account() -> Optional[ServiceAccountCredentials]:
+    """Try to build service account credentials from secrets or local file."""
+    # Streamlit Cloud
+    try:
+        import streamlit as st
+        sa_json = st.secrets.get("GOOGLE_SERVICE_ACCOUNT")
+        if sa_json:
+            info = json.loads(sa_json) if isinstance(sa_json, str) else dict(sa_json)
+            return ServiceAccountCredentials.from_service_account_info(info, scopes=SCOPES)
+    except Exception:
+        pass
+    # Local file
+    if SERVICE_ACCOUNT_FILE.exists():
+        return ServiceAccountCredentials.from_service_account_file(
+            str(SERVICE_ACCOUNT_FILE), scopes=SCOPES
+        )
+    return None
 
-    On Streamlit Cloud: reads token JSON from st.secrets["GOOGLE_DRIVE_TOKEN"].
-    Locally: uses the project-local token file.
+
+def _authenticate_user() -> Credentials:
+    """Return user OAuth credentials. Used for WRITES (uploads, folder creation)
+    since service accounts have no storage quota on non-Workspace Drives.
     """
     creds = None
-
-    # Try Streamlit Cloud secrets first
     try:
         import streamlit as st
         token_json = st.secrets.get("GOOGLE_DRIVE_TOKEN")
@@ -56,14 +81,12 @@ def _authenticate() -> Credentials:
     except Exception:
         pass
 
-    # Fall back to local token file
     if creds is None and TOKEN_FILE.exists():
         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            # Persist refreshed token locally if possible
             try:
                 TOKEN_FILE.write_text(creds.to_json())
             except Exception:
@@ -76,20 +99,46 @@ def _authenticate() -> Credentials:
     return creds
 
 
+def _authenticate():
+    """Return credentials for READ operations. Prefers service account
+    (never expires, but cannot write on non-Workspace Drives). Falls back
+    to user OAuth when no service account is configured.
+    """
+    sa_creds = _load_service_account()
+    if sa_creds is not None:
+        return sa_creds
+    return _authenticate_user()
+
+
 def _reset_drive_service():
-    """Clear cached service so next call re-authenticates."""
-    global _drive_service, _drive_creds
+    """Clear cached services so next call re-authenticates."""
+    global _drive_service, _drive_creds, _drive_service_write, _drive_creds_write
     _drive_service = None
     _drive_creds = None
+    _drive_service_write = None
+    _drive_creds_write = None
 
 
 def get_drive_service():
-    """Get or create Google Drive API service. Re-authenticates if creds expired."""
+    """Drive service for READS (list, download). Uses service account when
+    configured, else user OAuth. Service accounts don't expire.
+    """
     global _drive_service, _drive_creds
     if _drive_service is None or (_drive_creds and _drive_creds.expired):
         _drive_creds = _authenticate()
         _drive_service = build("drive", "v3", credentials=_drive_creds)
     return _drive_service
+
+
+def get_drive_service_write():
+    """Drive service for WRITES (upload, create folder, delete). Always uses
+    user OAuth — service accounts have no storage quota on non-Workspace Drives.
+    """
+    global _drive_service_write, _drive_creds_write
+    if _drive_service_write is None or (_drive_creds_write and _drive_creds_write.expired):
+        _drive_creds_write = _authenticate_user()
+        _drive_service_write = build("drive", "v3", credentials=_drive_creds_write)
+    return _drive_service_write
 
 
 def list_media_files(folder_id: Optional[str] = None) -> list[dict]:
@@ -170,7 +219,7 @@ def classify_media_type(mime_type: str) -> Optional[str]:
 
 def get_or_create_folder(name: str, parent_id: str) -> str:
     """Find or create a folder under parent_id. Returns folder ID."""
-    service = get_drive_service()
+    service = get_drive_service_write()
     # Search for existing
     q = (
         f"name = '{name}' and '{parent_id}' in parents "
@@ -200,7 +249,7 @@ def upload_file_to_drive(
 
     Returns: {"id": file_id, "name": filename, "webViewLink": url}
     """
-    service = get_drive_service()
+    service = get_drive_service_write()
     meta = {"name": filename, "parents": [folder_id]}
     media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mime_type, resumable=True)
     result = service.files().create(
