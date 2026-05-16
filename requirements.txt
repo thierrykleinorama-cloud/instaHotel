@@ -31,3 +31,7 @@ replicate>=1.0
 
 # Environment
 python-dotenv>=1.0.0
+
+# Windows TLS — make Python trust the system cert store (needed when
+# Avast/Kaspersky/corporate proxies do TLS interception). Harmless on Linux.
+pip-system-certs>=5.3

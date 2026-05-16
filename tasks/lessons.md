@@ -171,3 +171,21 @@
 25. **Extract shared IG publish logic** : When multiple pages need the same upload → container → poll → publish flow, extract it into a shared component (`app/components/ig_publish.py`) instead of duplicating the IG Graph API calls inline. The component handles credentials check, caption input, confirmation, upload to Supabase Storage, IG container lifecycle, cleanup — all with unique widget keys via `key_prefix`.
 26. **Test API calls yourself before user tests** : When integrating a new API feature (e.g. Veo reference_images), write a throwaway test script and run it BEFORE wiring into the UI. Discovered 3 hidden constraints (duration=8, no negative_prompt, no image= with refs) that would have wasted the user's time and credits. The SDK declaring types/params does NOT mean the API endpoint accepts them — always verify empirically.
 27. **Read the actual docs before declaring "doesn't work"** : Veo reference_images DO work on Gemini API — first test failures were caused by wrong duration (4s instead of required 8s). Fetching the docs page (ai.google.dev/gemini-api/docs/video) immediately revealed the constraint. User correctly pushed back. Don't conclude "unsupported" from a 400 error — investigate the specific constraint.
+
+## Lesson 2026-05-16 — Supabase OAuth PKCE in Streamlit
+**Erreur** : `sign_in_with_oauth()` is called on every Streamlit rerun, regenerating the `code_verifier` / `code_challenge` pair. By the time the user returns from Google, the stored verifier no longer matches the challenge in the URL — exchange fails silently.
+**Regle** : Generate the OAuth URL + verifier ONCE per login attempt and cache them in `st.cache_resource`. Restore the verifier into the client's `_storage` before calling `exchange_code_for_session()`. After exchange (success or fail), clear the cache so the next login gets a fresh pair. See `src/auth.py`.
+
+## Lesson 2026-05-16 — Supabase Site URL is the silent OAuth fallback
+**Regle** : If `redirect_to` in the OAuth URL is not in the Supabase project's allowlist (Auth → URL Configuration → Redirect URLs), Supabase falls back to the **Site URL** without warning. Symptom: user logs in via Google and lands on the wrong app. Always add every `APP_URL` (local + every Streamlit Cloud URL) to the Redirect URLs allowlist.
+
+## Lesson 2026-05-16 — `st.navigation` must be declared on the login screen too
+**Erreur** : Adding `if not check_auth(): login_form(); st.stop()` BEFORE calling `st.navigation(...)` causes Streamlit's file-based page discovery to kick in and leak the entire `app/pages/` listing into the sidebar of the unauthenticated login screen.
+**Regle** : When gating a multi-page app, wrap the login form in its own `st.navigation([st.Page(login_fn, title="Sign in")]).run()` before `st.stop()`. That suppresses the auto-discovered pages/ list.
+
+## Lesson 2026-05-16 — Supabase client must use PKCE for browser OAuth
+**Regle** : `create_client(url, key)` defaults to the implicit flow, which can't run in a server-rendered Streamlit app. Pass `ClientOptions(flow_type="pkce")` so `exchange_code_for_session()` works. Apply this in `src/database.py` even if other modules only do reads — auth piggybacks on the same singleton.
+
+## Lesson 2026-05-16 — Avast TLS interception breaks Python HTTPS on Windows
+**Erreur** : All Supabase calls from Python (reads AND auth) failed with `[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate`. Even passing `verify=certifi.where()` to httpx failed. Cause: Avast Web/Mail Shield does TLS interception and re-signs every HTTPS connection with its own root CA — browsers trust it via Windows cert store, but Python's bundled `certifi` does not. Diagnosed by inspecting the peer cert: `Issuer: CN=Avast Web/Mail Shield Root`.
+**Regle** : Pin `pip-system-certs>=5.3` in `requirements.txt`. It monkey-patches ssl/urllib3/httpx to use the Windows cert store on import. Zero code changes needed; harmless on Linux (Streamlit Cloud). Without this, no Python code in the venv can talk to Supabase / Anthropic / any HTTPS endpoint on the dev machine.
