@@ -190,6 +190,10 @@
 **Erreur** : Playwright tests against `*.streamlit.app` URLs returned empty bodies / missing selectors even though screenshots clearly showed the app rendered. Symptom: `pg.locator(...)`, `pg.content()`, and `body.inner_text()` all returned nothing, but the visual screenshot was correct.
 **Regle** : Streamlit Cloud serves the actual app DOM inside a sandboxed iframe at `https://<app>.streamlit.app/~/+/`. The top-level page is just Cloud chrome (Fork, GitHub, status badge). Iterate `pg.frames` and call `f.evaluate("() => document.querySelectorAll(...)")` inside the target frame instead of using top-level locators. Browsers render iframes natively, which is why screenshots looked fine. Only matters for deployed apps — local `streamlit run` has no iframe wrapping.
 
+## Lesson 2026-05-16 — Streamlit Cloud secrets are TOML — section headers swallow following keys
+**Erreur** : `APP_URL` defined in Cloud secrets but `st.secrets.get("APP_URL")` returned `None`. OAuth then silently fell back to `localhost:8501`. Cause: the secrets editor is parsed as TOML, so any key written BELOW a `[section]` header (e.g. `[gcp_service_account]`) becomes a sub-key of that section — `st.secrets["gcp_service_account"]["APP_URL"]`, not `st.secrets["APP_URL"]`.
+**Regle** : Top-level secrets MUST appear at the very top of the editor, BEFORE any `[section]` header. The order in the Cloud secrets editor matters even though regular Python dicts don't care. Rule of thumb: scalar keys first, sections last.
+
 ## Lesson 2026-05-16 — `st.cache_resource` survives Streamlit Cloud secret changes
 **Erreur** : After adding `APP_URL` to Streamlit Cloud secrets, the OAuth `redirect_to` still pointed at `localhost:8501`. The `oauth_url` was built once on first login render and stored in a `@st.cache_resource`-backed dict — that cache survives until the container restarts.
 **Regle** : Any value derived from `st.secrets` and stored in `st.cache_resource` will NOT pick up secret changes until you reboot the app from the Cloud dashboard (⋮ → Reboot app). Hot reload only re-runs Python source on file changes, not secret changes.
