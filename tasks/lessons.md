@@ -186,6 +186,14 @@
 ## Lesson 2026-05-16 — Supabase client must use PKCE for browser OAuth
 **Regle** : `create_client(url, key)` defaults to the implicit flow, which can't run in a server-rendered Streamlit app. Pass `ClientOptions(flow_type="pkce")` so `exchange_code_for_session()` works. Apply this in `src/database.py` even if other modules only do reads — auth piggybacks on the same singleton.
 
+## Lesson 2026-05-16 — Streamlit Cloud wraps the app in a `/~/+/` iframe
+**Erreur** : Playwright tests against `*.streamlit.app` URLs returned empty bodies / missing selectors even though screenshots clearly showed the app rendered. Symptom: `pg.locator(...)`, `pg.content()`, and `body.inner_text()` all returned nothing, but the visual screenshot was correct.
+**Regle** : Streamlit Cloud serves the actual app DOM inside a sandboxed iframe at `https://<app>.streamlit.app/~/+/`. The top-level page is just Cloud chrome (Fork, GitHub, status badge). Iterate `pg.frames` and call `f.evaluate("() => document.querySelectorAll(...)")` inside the target frame instead of using top-level locators. Browsers render iframes natively, which is why screenshots looked fine. Only matters for deployed apps — local `streamlit run` has no iframe wrapping.
+
+## Lesson 2026-05-16 — `st.cache_resource` survives Streamlit Cloud secret changes
+**Erreur** : After adding `APP_URL` to Streamlit Cloud secrets, the OAuth `redirect_to` still pointed at `localhost:8501`. The `oauth_url` was built once on first login render and stored in a `@st.cache_resource`-backed dict — that cache survives until the container restarts.
+**Regle** : Any value derived from `st.secrets` and stored in `st.cache_resource` will NOT pick up secret changes until you reboot the app from the Cloud dashboard (⋮ → Reboot app). Hot reload only re-runs Python source on file changes, not secret changes.
+
 ## Lesson 2026-05-16 — Avast TLS interception breaks Python HTTPS on Windows
 **Erreur** : All Supabase calls from Python (reads AND auth) failed with `[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate`. Even passing `verify=certifi.where()` to httpx failed. Cause: Avast Web/Mail Shield does TLS interception and re-signs every HTTPS connection with its own root CA — browsers trust it via Windows cert store, but Python's bundled `certifi` does not. Diagnosed by inspecting the peer cert: `Issuer: CN=Avast Web/Mail Shield Root`.
 **Regle** : Pin `pip-system-certs>=5.3` in `requirements.txt`. It monkey-patches ssl/urllib3/httpx to use the Windows cert store on import. Zero code changes needed; harmless on Linux (Streamlit Cloud). Without this, no Python code in the venv can talk to Supabase / Anthropic / any HTTPS endpoint on the dev machine.
