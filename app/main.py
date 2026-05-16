@@ -20,6 +20,18 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# --- Auth gate (Supabase: Google OAuth + email/password) ---
+from src.auth import check_auth, handle_oauth_callback, login_form, logout
+
+handle_oauth_callback()
+if not check_auth():
+    # Render login inside st.navigation so Streamlit's file-based pages/
+    # auto-discovery doesn't leak the full nav into the sidebar.
+    def _login_page():
+        login_form("InstaHotel")
+    st.navigation([st.Page(_login_page, title="Sign in", icon=":material/lock:")]).run()
+    st.stop()
+
 # --- Page definitions with sections ---
 home = st.Page("pages/0_Home.py", title="Home", icon=":material/home:", default=True)
 
@@ -54,5 +66,10 @@ pg = st.navigation(
         ],
     }
 )
+
+with st.sidebar:
+    st.caption(f"Logged in as {st.session_state.get('auth_user_email', '')}")
+    if st.button(":material/logout: Logout", use_container_width=True):
+        logout()
 
 pg.run()
