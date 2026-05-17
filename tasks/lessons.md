@@ -198,6 +198,21 @@
 **Erreur** : After adding `APP_URL` to Streamlit Cloud secrets, the OAuth `redirect_to` still pointed at `localhost:8501`. The `oauth_url` was built once on first login render and stored in a `@st.cache_resource`-backed dict — that cache survives until the container restarts.
 **Regle** : Any value derived from `st.secrets` and stored in `st.cache_resource` will NOT pick up secret changes until you reboot the app from the Cloud dashboard (⋮ → Reboot app). Hot reload only re-runs Python source on file changes, not secret changes.
 
+## Lesson 2026-05-17 — supabase-py ClientOptions: import from package root, not lib path
+**Erreur** : A sibling project (hotelPandL) used `from supabase.lib.client_options import ClientOptions` and got `AttributeError: 'ClientOptions' object has no attribute 'storage'` on `create_client(...)`. They monkey-patched the missing fields before tracing the real cause.
+**Pattern** : `supabase.lib.client_options` defines both a base `ClientOptions` (missing `storage`/`httpx_client`) and a subclass `SyncClientOptions` (has them). The package-level export `from supabase import ClientOptions` resolves to `SyncClientOptions`. Importing from the `lib` submodule grabs the base class and breaks `Client.__init__`.
+**Regle** : Always `from supabase import ClientOptions` (never from `supabase.lib.*`). Verify: `supabase.ClientOptions is supabase.lib.client_options.SyncClientOptions` should be True. InstaHotel's current `src/database.py` already uses the safe import — preserve that on any future refactor.
+
+## Lesson 2026-05-17 — Local OAuth port must match `.env` APP_URL
+**Erreur** : Locally, `.env`'s `APP_URL=http://localhost:8501` but stale Streamlit held 8501, so a fresh `streamlit run` fell back to 8502. OAuth URL was generated with `redirect_to=8501`, Google redirected to 8501 (stale process with no matching verifier), surfaced as "code challenge does not match" — a downstream symptom that masked the real port mismatch.
+**Pattern** : When OAuth verifier errors appear, the root cause is often the port the live process is on doesn't match the `redirect_to` baked into the OAuth URL.
+**Regle** : Right-click "Sign in with Google" → copy link → check the `redirect_to` query param matches the actual running port. If a stale Streamlit holds the desired port, kill that PID first (don't switch ports), so `.env`'s APP_URL stays consistent across local + prod.
+
+## Lesson 2026-05-17 — Avast IDP.HELU.PSD11 false-flags Chrome + CDP automation
+**Erreur** : Driving debug Chrome (launched with `--remote-debugging-port=9222`) via Playwright triggered Avast's IDP behavioral engine — `IDP.HELU.PSD11` alert — and blocked the process mid-session. Avast pattern-matches "browser launched with remote debugging + external automation hammering it via CDP" as info-stealer behavior; it doesn't care that the binary is unmodified Chrome.exe.
+**Pattern** : Same Avast environment that broke pip + Python HTTPS (`pip-system-certs` lesson) has multiple shields hostile to dev automation.
+**Regle** : Add Avast exceptions for: `chrome.exe`, the DebugProfile directory, AND the `python.exe` driving Playwright. Targeted exceptions are safer than disabling Behavior Shield wholesale.
+
 ## Lesson 2026-05-16 — Avast TLS interception breaks Python HTTPS on Windows
 **Erreur** : All Supabase calls from Python (reads AND auth) failed with `[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate`. Even passing `verify=certifi.where()` to httpx failed. Cause: Avast Web/Mail Shield does TLS interception and re-signs every HTTPS connection with its own root CA — browsers trust it via Windows cert store, but Python's bundled `certifi` does not. Diagnosed by inspecting the peer cert: `Issuer: CN=Avast Web/Mail Shield Root`.
 **Regle** : Pin `pip-system-certs>=5.3` in `requirements.txt`. It monkey-patches ssl/urllib3/httpx to use the Windows cert store on import. Zero code changes needed; harmless on Linux (Streamlit Cloud). Without this, no Python code in the venv can talk to Supabase / Anthropic / any HTTPS endpoint on the dev machine.
