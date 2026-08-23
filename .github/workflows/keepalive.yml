@@ -1,0 +1,83 @@
+name: Supabase Keep-Alive
+
+# Runs DAILY and does two things:
+#   1. Keeps the Supabase free-tier DB awake with a REAL write (it auto-pauses
+#      after ~7 days of inactivity, which breaks the app).
+#   2. Health-checks that this app's URL responds.
+# If EITHER check fails the job exits non-zero, and GitHub emails the repo owner
+# about the failed scheduled run (native Actions failure notification, no extra
+# setup). Both checks always run so the log shows the full picture.
+#
+# SHARED DATABASE: this app, hotelPandL, and suppliers all use the SAME Supabase
+# project (lngrockgpnwaizzyvwsk). The DB write here is intentionally REDUNDANT
+# with the identical workflows in those repos: one project, kept alive from
+# three repos so it survives even if one repo goes quiet (GitHub disables
+# scheduled workflows after 60 days of no repo activity). Set up 2026-08-23.
+#
+# Why a write (PATCH) not a read: a prior read-based version paused anyway on
+# 2026-08-16 despite 200s (a read can be served without hitting Postgres). An
+# UPDATE always executes SQL. Target: dedicated table `keepalive(id, last_ping)`,
+# row id=1, RLS on (service_role bypasses it) — created in the shared project.
+#
+# Requires GitHub repo secrets SUPABASE_URL and SUPABASE_SERVICE_KEY (set).
+# For the failure email to reach you, keep GitHub Actions notifications on
+# (github.com/settings/notifications -> Actions -> failed workflows).
+
+on:
+  schedule:
+    # Daily at 06:37 UTC (offset per-repo to spread the three keep-alives out).
+    - cron: '37 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Keep DB alive (write) + health-check the app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          APP_URL: https://instanoucentista.streamlit.app/
+        run: |
+          fail=0
+
+          # --- 1. Supabase DB: real write (keeps it awake + proves it is up) ---
+          ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "1/2 DB write: last_ping=$ts -> keepalive ..."
+          db_code=$(curl -s -o /tmp/db.json -w "%{http_code}" \
+            -X PATCH \
+            -H "apikey: $SUPABASE_SERVICE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" \
+            "$SUPABASE_URL/rest/v1/keepalive?id=eq.1" \
+            -d "{\"last_ping\": \"$ts\"}")
+          if [ "$db_code" = "200" ]; then
+            echo "    DB OK (HTTP 200): $(cat /tmp/db.json)"
+          else
+            echo "::error::DB keep-alive write FAILED (HTTP $db_code) - Supabase is likely PAUSED. Restore it: https://supabase.com/dashboard/project/lngrockgpnwaizzyvwsk"
+            cat /tmp/db.json || true
+            fail=1
+          fi
+
+          # --- 2. App reachability (retries absorb Streamlit cold starts) ---
+          echo "2/2 App check: $APP_URL ..."
+          app_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            --retry 2 --retry-delay 5 --max-time 45 "$APP_URL" || echo "000")
+          # Streamlit Cloud answers "/" with a 303 redirect when healthy, so
+          # accept any 2xx/3xx as "responding". A real outage gives 000
+          # (timeout/DNS) or 5xx.
+          if [ "$app_code" -ge 200 ] && [ "$app_code" -lt 400 ]; then
+            echo "    App OK (HTTP $app_code)"
+          else
+            echo "::error::App health-check FAILED (HTTP $app_code) - $APP_URL is not responding"
+            fail=1
+          fi
+
+          if [ "$fail" != "0" ]; then
+            echo "::error::Daily health check FAILED - see the errors above."
+            exit 1
+          fi
+          echo "All checks passed - DB is awake and the app is up."
