@@ -192,6 +192,7 @@
 
 ### UX Polish (low priority)
 - [ ] **Rethink Content Drafts page** — Mostly redundant now that Production Pipeline has inline review. Consider: remove entirely (AI Lab pages have their own accept/reject), or repurpose as "Prompt Improvement" page showing rejected items grouped by reason.
+- [ ] **Reorganize Drive into category subfolders** (deferred 2026-05-25 — "too farfetched right now"). Proposed structure: `Images/{category}/` + `Videos/{category}/` + `uncategorized/`. File IDs are stable on move, so no DB breakage. Requires: one-off migration script, fresh OAuth token, `route_to_category_folder()` helper called at the end of `process_image_bytes()` / `process_video_bytes()` in `media_indexer.py` so future uploads (app + Drive direct) auto-land in the right bucket. Revisit only if the flat folder becomes a problem for the designer.
 
 ### Prompts & Content Quality
 - [ ] **Sitges Knowledge Base page** — Streamlit admin page where Daniela can manage local knowledge (restaurants, activities, insider tips, seasonal events) without editing Python files. Stored in a Supabase table (`sitges_knowledge`). Caption generator queries this table instead of static `DESTINATION_CONTEXT` string. Benefit: Daniela updates a restaurant → captions immediately reflect it.
